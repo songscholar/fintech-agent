@@ -1,0 +1,6 @@
+# langchain相关
+langchain==1.2.0
+langgraph==1.0.5
+langsmith==0.5.0
+deepagents==0.3.0
+langchain-community==0.4.1
