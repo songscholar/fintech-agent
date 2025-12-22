@@ -18,7 +18,6 @@ from langchain_community.document_loaders import (
 
 from config import config
 
-# ====================== 1. 基础配置（复用原有） ======================
 # 金融文本优化的切分器  todo
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=512,
@@ -34,8 +33,7 @@ embeddings = HuggingFaceEmbeddings(
     encode_kwargs={"normalize_embeddings": True}
 )
 
-# ====================== 2. 通用文件加载器（核心简化） ======================
-def load_document_generic(
+def load_document(
     file_path: str,
     source_name: Optional[str] = None,
     encoding: str = "utf-8"
@@ -118,8 +116,8 @@ def load_document_generic(
         # 兼容中文编码/文件不存在等常见异常
         raise ValueError(f"文件加载失败（{file_path}）：{str(e)}")
 
-# ====================== 3. 来源格式化（复用原有，仅补充新格式） ======================
-def format_sources(sources: List[Document]) -> str:
+
+def format_document(sources: List[Document]) -> str:
     """
     格式化引用来源（适配LangChain Loader的元数据）
     """
