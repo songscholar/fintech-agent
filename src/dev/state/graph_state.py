@@ -18,3 +18,4 @@ class GraphState(TypedDict):
     answer_validated: Optional[bool]
     session_id: str
     metadata: Dict[str, Any]
+    retry_count: int
