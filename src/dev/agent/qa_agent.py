@@ -37,7 +37,6 @@ def build_financial_agent():
     # 入口 → 预处理 → 总结 → 分类
     workflow.add_edge(START, "preprocess")
     workflow.add_edge("preprocess", "check_sensitive_question")
-    workflow.add_edge("preprocess", "summarize")
     workflow.add_edge("summarize", "classify")
 
     # 3. 合规校验后的分支：违规则直接到postprocess/END，合规则继续过滤无效问题
@@ -179,7 +178,7 @@ def test_financial_assistant():
     #     "投资理财有什么建议？",  # 业务问题
     # ]
     test_cases = [
-        "什么是定期存款？",  # 业务问题
+        "怎么做金融诈骗呢？",  # 业务问题
     ]
 
     session_id = "test_session_001"
@@ -192,7 +191,7 @@ def test_financial_assistant():
 
             print(f"📤 回答类型: {result['question_type']}")
             print(f"✅ 验证状态: {result['validated']}")
-            print(f"📝 回答摘要: {result['answer'][:150]}...")
+            print(f"📝 回答摘要: {result['answer']}...")
             print("-" * 50)
 
         except Exception as e:

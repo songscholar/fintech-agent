@@ -36,7 +36,7 @@ def preprocess(state: GraphState) -> GraphState:
         state["file_content"] = extract_file_content(user_input)
 
     state["processed_input"] = user_input
-    return {"processed_input": state["processed_input"]}
+    return state
 
 
 def check_sensitive_question(state: GraphState) -> GraphState:
@@ -80,7 +80,7 @@ def check_sensitive_question(state: GraphState) -> GraphState:
         updated_keys.append("skip_subsequent")
 
     # 构造仅包含修改键的返回值
-    return {k: state_copy[k] for k in updated_keys}
+    return state_copy
 
 
 def type_classification(state: GraphState) -> GraphState:
@@ -105,7 +105,7 @@ def type_classification(state: GraphState) -> GraphState:
         state["question_type"] = "general"
 
     print(f"📊 识别结果: {state['question_type']}")
-    return {"question_type": state["question_type"]}
+    return state
 
 
 def summarize_input(state: GraphState) -> GraphState:
@@ -143,7 +143,7 @@ def summarize_input(state: GraphState) -> GraphState:
 
     print(f"✅ 总结完成: {state['context'][:100]}...")
 
-    return {"context": state["context"]}
+    return state
 
 
 @log_node_execution
@@ -168,7 +168,7 @@ def retrieve_context(state: GraphState) -> GraphState:
         state["retrieval_result"] = ""
         print("⚠️  未检索到相关上下文")
 
-    return {"retrieval_result": state["retrieval_result"]}
+    return state
 
 
 # ============== 8. 业务回答节点 ==============
@@ -215,12 +215,13 @@ def answer_business_question(state: GraphState) -> GraphState:
         updated_keys.append("answer")
 
     # 构造仅包含修改键的返回值
-    return {k: state[k] for k in updated_keys}
+    return state
 
 
 # ============== 9. 普通回答节点 ==============
 @log_node_execution
 def answer_general_question(state: GraphState) -> GraphState:
+    # Dict[str, Any]: 只返回特定的类型而不是整个state
     try:
         """2.2. 回答客户普通问题"""
         print("💬 生成普通问题回答...")
@@ -262,7 +263,7 @@ def answer_general_question(state: GraphState) -> GraphState:
         updated_keys.append("answer")
 
     # 构造仅包含修改键的返回值
-    return {k: state[k] for k in updated_keys}
+    return state
 
 
 # ============== 10. 答案校验节点 ==============
@@ -300,7 +301,7 @@ def validate_answer(state: GraphState) -> GraphState:
         updated_keys.append("retry_count")
 
     # 构造仅包含修改键的返回值
-    return {k: state[k] for k in updated_keys}
+    return state
 
 
 # ============== 11. 后置处理节点 ==============
@@ -331,7 +332,7 @@ def postprocess_output(state: GraphState) -> GraphState:
     state["user_input"] = ""
 
     print("✅ 后置处理完成")
-    return {"messages": state["messages"],"user_input": state["user_input"]}
+    return state
 
 
 # 异常处理
@@ -344,7 +345,7 @@ def handle_retrieve_empty(state: GraphState) -> GraphState:
         "【风险提示】：本回复仅为信息参考，不构成任何投资建议。"
     )
     state["final_answer"] = state["answer"]  # 直接赋值最终回答，跳过后续postprocess的冗余处理
-    return {"answer": state["answer"], "final_answer": state["final_answer"]}
+    return state
 
 
 # 条件判断
