@@ -36,43 +36,52 @@ def preprocess(state: GraphState) -> GraphState:
         state["file_content"] = extract_file_content(user_input)
 
     state["processed_input"] = user_input
-    return state
+    return {"processed_input": state["processed_input"]}
 
 
 def check_sensitive_question(state: GraphState) -> GraphState:
-    state = copy.deepcopy(state)
+    # 1. 深拷贝原状态（保留操作，但最终只返回修改的键）
+    state_copy = copy.deepcopy(state)
 
-    # 1. 合规校验Prompt（金融场景定制，语义级判断）
+    # 2. 原有合规校验逻辑（完全保留）
     compliance_prompt = QAPromptManager().get_prompt(
         "compliance",
         context="",
-        question=state["processed_input"]
+        question=state_copy["processed_input"]
     )
 
-    # 2. 小模型调用（轻量、快速）
     try:
         compliance_model = DynamicModelManager().get_model("deepseek")
         response = compliance_model.invoke([{"role": "user", "content": compliance_prompt}])
-        state["question_compliance"] = response.content.strip()
+        state_copy["question_compliance"] = response.content.strip()
 
-        # 3. 违规则生成提示语（合规则无操作）
-        if state["question_compliance"] == "违规":
-            state["answer"] = (
+        if state_copy["question_compliance"] == "违规":
+            state_copy["answer"] = (
                 "您的问题涉及金融违规相关内容，根据监管要求，无法为您解答。\n"
                 "【合规提示】：请遵守《证券法》《商业银行法》等相关法规，咨询合法合规的金融问题。"
             )
-            state["skip_subsequent"] = True  # 标记跳过后续流程
+            state_copy["skip_subsequent"] = True
     except Exception as e:
-        # 容错：小模型调用失败时，降级为关键词校验（兜底）
         forbidden_keywords = ["内幕交易", "保本保收益", "代客理财", "洗钱", "非法集资"]
-        if any(k in state["processed_question"] for k in forbidden_keywords):
-            state["question_compliance"] = "违规"
-            state["answer"] = "您的问题涉及违规内容，无法解答。"
-            state["skip_subsequent"] = True
+        if any(k in state_copy["processed_input"] for k in forbidden_keywords):
+            state_copy["question_compliance"] = "违规"
+            state_copy["answer"] = "您的问题涉及违规内容，无法解答。"
+            state_copy["skip_subsequent"] = True
         else:
-            state["question_compliance"] = "合规"
+            state_copy["question_compliance"] = "合规"
 
-    return state
+    # 3. 最小更新：仅返回修改过的键（核心！）
+    updated_keys = []
+    if "question_compliance" in state_copy:
+        updated_keys.append("question_compliance")
+    if "answer" in state_copy and state_copy["answer"]:  # 仅当answer有值时返回
+        updated_keys.append("answer")
+    if "skip_subsequent" in state_copy:
+        updated_keys.append("skip_subsequent")
+
+    # 构造仅包含修改键的返回值
+    return {k: state_copy[k] for k in updated_keys}
+
 
 def type_classification(state: GraphState) -> GraphState:
     """1.4. 类型识别：判断是业务问题还是普通问题"""
@@ -96,7 +105,8 @@ def type_classification(state: GraphState) -> GraphState:
         state["question_type"] = "general"
 
     print(f"📊 识别结果: {state['question_type']}")
-    return state
+    return {"question_type": state["question_type"]}
+
 
 def summarize_input(state: GraphState) -> GraphState:
     """1.3. 总结信息获取用户问题"""
@@ -132,7 +142,8 @@ def summarize_input(state: GraphState) -> GraphState:
         state["context"] = state["processed_input"]
 
     print(f"✅ 总结完成: {state['context'][:100]}...")
-    return state
+
+    return {"context": state["context"]}
 
 
 @log_node_execution
@@ -157,13 +168,12 @@ def retrieve_context(state: GraphState) -> GraphState:
         state["retrieval_result"] = ""
         print("⚠️  未检索到相关上下文")
 
-    return state
+    return {"retrieval_result": state["retrieval_result"]}
 
 
 # ============== 8. 业务回答节点 ==============
 @log_node_execution
 def answer_business_question(state: GraphState) -> GraphState:
-
     try:
         """2.1. 回答客户业务信息"""
         print("🏦 生成业务问题回答...")
@@ -198,40 +208,61 @@ def answer_business_question(state: GraphState) -> GraphState:
         state["answer"] = f"回答生成失败（原因：{str(e)}），请稍后重试。"
         state["answer_validated"] = False
 
-    return state
+    updated_keys = []
+    if "answer_validated" in state:
+        updated_keys.append("answer_validated")
+    if "answer" in state and state["answer"]:  # 仅当answer有值时返回
+        updated_keys.append("answer")
+
+    # 构造仅包含修改键的返回值
+    return {k: state[k] for k in updated_keys}
+
 
 # ============== 9. 普通回答节点 ==============
 @log_node_execution
 def answer_general_question(state: GraphState) -> GraphState:
-    """2.2. 回答客户普通问题"""
-    print("💬 生成普通问题回答...")
+    try:
+        """2.2. 回答客户普通问题"""
+        print("💬 生成普通问题回答...")
 
-    prompt_manager = QAPromptManager()
-    model_manager = DynamicModelManager()
+        prompt_manager = QAPromptManager()
+        model_manager = DynamicModelManager()
 
-    # 准备上下文
-    context = ""
-    if state.get("retrieval_result"):
-        context += f"相关知识：\n{state['retrieval_result']}\n\n"
-    if state.get("context"):
-        context += f"问题背景：\n{state['context']}"
+        # 准备上下文
+        context = ""
+        if state.get("retrieval_result"):
+            context += f"相关知识：\n{state['retrieval_result']}\n\n"
+        if state.get("context"):
+            context += f"问题背景：\n{state['context']}"
 
-    # 获取动态提示词
-    prompt = prompt_manager.get_prompt(
-        "general",
-        context=context,
-        question=state["processed_input"]
-    )
+        # 获取动态提示词
+        prompt = prompt_manager.get_prompt(
+            "general",
+            context=context,
+            question=state["processed_input"]
+        )
 
-    # 选择模型 todo 搞一个通用模型模型
-    model = model_manager.get_model("deepseek")
+        # 选择模型 todo 搞一个通用模型模型
+        model = model_manager.get_model("deepseek")
 
-    # 生成回答
-    response = model.invoke(prompt)
-    state["answer"] = response.content
+        # 生成回答
+        response = model.invoke(prompt)
+        state["answer"] = response.content
 
-    print(f"✅ 普通回答生成完成，长度: {len(state['answer'])} 字符")
-    return state
+        print(f"✅ 普通回答生成完成，长度: {len(state['answer'])} 字符")
+    except Exception as e:
+        # 降级策略：使用兜底模型/提示语
+        state["answer"] = f"回答生成失败（原因：{str(e)}），请稍后重试。"
+        state["answer_validated"] = False
+
+    updated_keys = []
+    if "answer_validated" in state:
+        updated_keys.append("answer_validated")
+    if "answer" in state and state["answer"]:  # 仅当answer有值时返回
+        updated_keys.append("answer")
+
+    # 构造仅包含修改键的返回值
+    return {k: state[k] for k in updated_keys}
 
 
 # ============== 10. 答案校验节点 ==============
@@ -262,7 +293,14 @@ def validate_answer(state: GraphState) -> GraphState:
         state["retry_count"] += 1
         print("⚠️  答案验证不通过，需要重新生成")
 
-    return state
+    updated_keys = []
+    if "answer_validated" in state:
+        updated_keys.append("answer_validated")
+    if "retry_count" in state:  # 仅当answer有值时返回
+        updated_keys.append("retry_count")
+
+    # 构造仅包含修改键的返回值
+    return {k: state[k] for k in updated_keys}
 
 
 # ============== 11. 后置处理节点 ==============
@@ -293,7 +331,8 @@ def postprocess_output(state: GraphState) -> GraphState:
     state["user_input"] = ""
 
     print("✅ 后置处理完成")
-    return state
+    return {"messages": state["messages"],"user_input": state["user_input"]}
+
 
 # 异常处理
 def handle_retrieve_empty(state: GraphState) -> GraphState:
@@ -305,7 +344,8 @@ def handle_retrieve_empty(state: GraphState) -> GraphState:
         "【风险提示】：本回复仅为信息参考，不构成任何投资建议。"
     )
     state["final_answer"] = state["answer"]  # 直接赋值最终回答，跳过后续postprocess的冗余处理
-    return state
+    return {"answer": state["answer"], "final_answer": state["final_answer"]}
+
 
 # 条件判断
 def validate_branch(state: GraphState):
@@ -318,6 +358,7 @@ def validate_branch(state: GraphState):
         return "retry_" + state["question_type"]
     else:
         return "max_retry"
+
 
 def retrieve_branch(state: GraphState):
     # 判定“无有效信息”的条件：

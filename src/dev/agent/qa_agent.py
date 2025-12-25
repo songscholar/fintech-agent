@@ -1,3 +1,5 @@
+import os
+
 from langchain.agents.middleware import HumanInTheLoopMiddleware, SummarizationMiddleware, PIIMiddleware
 from langchain_core.messages import HumanMessage, BaseMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -21,7 +23,7 @@ def build_financial_agent():
 
     # 2. 添加节点（职责不变，仅调整顺序）
     workflow.add_node("preprocess", preprocess)  # 1.1 预处理问题
-    workflow.add_node("check_sensitive_question", check_sensitive_question) # 用户问题合规性检查
+    workflow.add_node("check_sensitive_question", check_sensitive_question)  # 用户问题合规性检查
     workflow.add_node("summarize", summarize_input)  # 1.2 总结问题
     workflow.add_node("classify", type_classification)  # 1.3 分类问题类型
     workflow.add_node("retrieve", retrieve_context)  # 1.4 检索业务上下文
@@ -68,7 +70,7 @@ def build_financial_agent():
     )
 
     # 检索后直接回答业务问题（无需再判断类型）
-    #workflow.add_edge("retrieve", "answer_business")
+    # workflow.add_edge("retrieve", "answer_business")
 
     # 回答后统一校验
     workflow.add_edge("answer_business", "validate")
@@ -140,7 +142,10 @@ class FinancialQAAssistant:
             "answer": None,
             "answer_validated": None,
             "session_id": session_id,
-            "metadata": {}
+            "metadata": {},
+            "retry_count": 0,
+            "skip_subsequent": False,
+            "question_compliance": None
         }
 
         # 执行流程图
@@ -197,25 +202,25 @@ def test_financial_assistant():
 
 
 # ============== 16. 主函数 ==============
-# if __name__ == "__main__":
-#     # 设置API密钥
-#     os.environ["OPENAI_API_KEY"] = ""  # 请替换为您的API密钥
-#     os.environ["USER_AGENT"] = "fintech-agent/1.0 (songzuoqiang@gmail.com)"
-#
-#     # 运行测试
-#     test_financial_assistant()
+if __name__ == "__main__":
+    # 设置API密钥
+    os.environ["OPENAI_API_KEY"] = ""  # 请替换为您的API密钥
+    os.environ["USER_AGENT"] = "fintech-agent/1.0 (songzuoqiang@gmail.com)"
+
+    # 运行测试
+    test_financial_assistant()
 
 # see graph structure
-if __name__ == "__main__":
-    """构建金融问答智能体流程图"""
-
-    app = build_financial_agent()
-
-    png_data = app.get_graph().draw_mermaid_png()
-    with open('graph.png', 'wb') as f:
-        f.write(png_data)
-    print("图像已保存为graph.png")
-    # 可以尝试自动打开文件
-    import webbrowser, os
-
-    webbrowser.open('file://' + os.path.realpath('graph.png'))
+# if __name__ == "__main__":
+#     """构建金融问答智能体流程图"""
+#
+#     app = build_financial_agent()
+#
+#     png_data = app.get_graph().draw_mermaid_png()
+#     with open('graph.png', 'wb') as f:
+#         f.write(png_data)
+#     print("图像已保存为graph.png")
+#     # 可以尝试自动打开文件
+#     import webbrowser, os
+#
+#     webbrowser.open('file://' + os.path.realpath('graph.png'))

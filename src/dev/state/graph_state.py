@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional, TypedDict, Annotated
 from langchain_core.messages import BaseMessage
+from langgraph.channels import LastValue
 from langgraph.graph.message import add_messages
 
 
@@ -7,7 +8,7 @@ from langgraph.graph.message import add_messages
 class GraphState(TypedDict):
     """定义流程图的状态"""
     messages: Annotated[List[BaseMessage], add_messages]
-    user_input: str
+    user_input: Annotated[Optional[str], LastValue(str)]
     question_type: Optional[str]  # "business" or "general"
     context: Optional[str]
     file_content: Optional[str]
@@ -19,3 +20,5 @@ class GraphState(TypedDict):
     session_id: str
     metadata: Dict[str, Any]
     retry_count: int
+    skip_subsequent: bool
+    question_compliance: Annotated[Optional[str], LastValue(str)]

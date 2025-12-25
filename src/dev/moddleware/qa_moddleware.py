@@ -23,7 +23,7 @@ class DynamicModelManager:
         # 阿里通义千问（兼容OpenAI接口）
         "qwen-turbo": (ChatQwen, "ChatQwen", "qwen-turbo"),
         # deepseek
-        "deepseek": (ChatDeepSeek, "DEEPSEEk", "deepseek-chat"),
+        "deepseek": (ChatDeepSeek, "DEEPSEEK", "deepseek-chat"),
         # 默认
         "default": (ChatOpenAI, "OPENAI", "gpt-3.5-turbo"),
     }
