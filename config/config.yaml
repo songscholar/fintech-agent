@@ -1,2 +1,25 @@
-EMBEDDING_MODEL: sfdf
-OCR_USE_GPU: kflf
+# 嵌入模型配置
+EMBEDDING_MODEL: "shibing624/text2vec-base-chinese"  # 中文金融文本适配的嵌入模型
+OCR_USE_GPU: false  # 是否使用GPU进行OCR和嵌入计算（true/false）
+
+# 文本切分配置（金融文档优化）
+CHUNK_SIZE: 512  # 单个文本块字符数
+CHUNK_OVERLAP: 50  # 文本块重叠字符数
+SEPARATORS: ["。", "！", "？", "；", "\n", " ", "，"]  # 中文金融文本优先分隔符
+
+# 文档加载扩展配置
+LOADER:
+  MAX_FILE_SIZE_MB: 100  # 最大支持文件大小（MB）
+  SUPPORTED_EXTENSIONS: [".pdf", ".txt", ".md", ".docx", ".jpg", ".jpeg", ".png", ".bmp", ".tiff"]  # 支持的文件扩展名
+  WEB_TIMEOUT: 30  # 网页加载超时时间（秒）
+
+# OCR配置（图片文字提取）
+OCR:
+  LANGUAGE: "chi_sim"  # OCR识别语言（chi_sim=简体中文，eng=英文）
+  ENABLE_BATCH: false  # 是否启用批量OCR处理
+
+# 缓存配置（可选，用于优化重复加载）
+CACHE:
+  ENABLE: true  # 是否启用文档缓存
+  DIR: "./document_cache"  # 缓存目录路径
+  EXPIRY_DAYS: 7  # 缓存过期时间（天）
