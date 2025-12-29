@@ -167,8 +167,12 @@ def load_document(
         # 补充元数据并切分
         enhanced_docs = []
         for i, doc in enumerate(raw_docs):
-            doc.metadata = {**doc.metadata, **base_metadata, "chunk_raw_id": i}
-            enhanced_docs.append(doc)
+            # 合并元数据时，保留原文档的页码（如PDF的page字段）
+            merged_metadata = {**doc.metadata, **base_metadata, "chunk_raw_id": i}
+            # 确保页码字段存在（针对PDF等格式）
+            if "page" not in merged_metadata:
+                merged_metadata["page"] = i + 1  # 默认为文档中的第i+1页
+            enhanced_docs.append(Document(page_content=doc.page_content, metadata=merged_metadata))
 
         split_docs = text_splitter.split_documents(enhanced_docs)
 

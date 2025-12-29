@@ -181,12 +181,16 @@ def answer_business_question(state: GraphState) -> GraphState:
         prompt_manager = QAPromptManager()
         model_manager = DynamicModelManager()
 
-        # 准备上下文
+        # 准备上下文（包含检索到的文件信息）
         context = ""
         if state.get("retrieval_result"):
-            context += f"知识库信息：\n{state['retrieval_result']}\n\n"
-        if state.get("context"):
-            context += f"问题总结：\n{state['context']}"
+            # 明确提示模型需要引用文件来源
+            context += (
+                "以下是检索到的参考资料（包含文件来源信息）：\n"
+                f"{state['retrieval_result']}\n\n"
+                "请在回答中明确引用上述资料的来源（如“根据XXX文件第X页”），"
+                "若有多个来源，分别标注。"
+            )
 
         # 获取动态提示词
         prompt = prompt_manager.get_prompt(

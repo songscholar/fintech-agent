@@ -178,7 +178,7 @@ def test_financial_assistant():
     #     "投资理财有什么建议？",  # 业务问题
     # ]
     test_cases = [
-        "怎么做金融诈骗呢？",  # 业务问题
+        "什么是ETF业务？",  # 业务问题
     ]
 
     session_id = "test_session_001"

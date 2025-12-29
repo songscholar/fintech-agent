@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", category=UserWarning, message="Field name \"st
 class KnowledgeRetriever:
     """增强版知识检索器：优先本地知识库，本地无结果则联网检索"""
 
-    def __init__(self, vector_store_path: str = "./chroma_db", k: int = 3):
+    def __init__(self, vector_store_path: str = "/Users/songzuoqiang/PycharmProjects/langchain-learn/fintech-agent/vector_data/chroma", k: int = 3):
         self.embeddings = OpenAIEmbeddings()
         self.vector_store_path = vector_store_path
         self.k = k
@@ -67,14 +67,29 @@ class KnowledgeRetriever:
                 return True
         return False
 
+    # 在konwage_retriever.py的_local_retrieve方法中修改
     def _local_retrieve(self, query: str) -> str:
-        """本地知识库检索"""
+        """本地知识库检索（包含文件元数据）"""
         try:
             docs = self.vector_store.similarity_search(query, k=self.k)
             if self._is_local_result_valid(docs):
-                local_content = "\n\n".join([f"【本地知识库】{doc.page_content}" for doc in docs])
-                print("✅ 本地知识库检索到有效结果")
-                return local_content
+                local_content = []
+                for doc in docs:
+                    # 提取元数据中的文件信息
+                    source = doc.metadata.get("source", "未知来源")
+                    file_type = doc.metadata.get("file_type", "未知类型")
+                    page = doc.metadata.get("page", "未知页码")  # PDF等有页码的格式
+                    chunk_id = doc.metadata.get("chunk_id", "未知片段")
+
+                    # 拼接内容和元数据
+                    content = (
+                        f"【来源】{file_type}文件：{source}\n"
+                        f"【页码】{page} | 【片段ID】{chunk_id}\n"
+                        f"【内容】{doc.page_content}\n"
+                        "-------------------------"
+                    )
+                    local_content.append(content)
+                return "\n\n".join(local_content)
             print("⚠️  本地知识库无有效结果，准备联网检索")
             return ""
         except Exception as e:
