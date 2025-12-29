@@ -1,14 +1,14 @@
 import time
 import logging
 
-from src.dev.state.graph_state import GraphState
+from src.dev.state.graph_state import QAGraphState
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fintech_agent")
 
 # 装饰器：记录节点执行耗时
 def log_node_execution(node_func):
-    def wrapper(state: GraphState) -> GraphState:
+    def wrapper(state: QAGraphState) -> QAGraphState:
         start_time = time.time()
         try:
             result = node_func(state)

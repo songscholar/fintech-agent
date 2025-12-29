@@ -11,7 +11,7 @@ from src.dev.memory.qa_agent_memory import MemoryManager
 from src.dev.node.qa_agent_node import preprocess, summarize_input, type_classification, retrieve_context, \
     answer_business_question, answer_general_question, validate_answer, postprocess_output, handle_retrieve_empty, \
     validate_branch, retrieve_branch, check_sensitive_question
-from src.dev.state.graph_state import GraphState
+from src.dev.state.graph_state import QAGraphState
 from src.dev.utils.scholar_tools import generate_session_id
 
 
@@ -19,7 +19,7 @@ def build_financial_agent():
     """构建金融问答智能体流程图"""
 
     # 创建状态图
-    workflow = StateGraph(GraphState)
+    workflow = StateGraph(QAGraphState)
 
     # 2. 添加节点（职责不变，仅调整顺序）
     workflow.add_node("preprocess", preprocess)  # 1.1 预处理问题

@@ -1,0 +1,36 @@
+# 数据库配置
+databases:
+  primary:
+    type: "mysql"
+    host: "localhost"
+    port: 3306
+    database: "finance_db"
+    username: "${DB_USER}"
+    password: "${DB_PASSWORD}"
+    pool_size: 5
+    max_overflow: 10
+
+  backup:
+    type: "postgresql"
+    host: "backup.db.example.com"
+    port: 5432
+    database: "finance_backup"
+    username: "${BACKUP_DB_USER}"
+    password: "${BACKUP_DB_PASSWORD}"
+
+# 安全配置
+security:
+  allowed_operations: ["SELECT", "INSERT", "UPDATE", "DELETE"]
+  restricted_tables: ["user_passwords", "system_config", "audit_logs"]
+  max_query_rows: 10000
+  require_human_approval_for:
+    - "DELETE"
+    - "UPDATE without WHERE"
+    - "INSERT large batches"
+
+# 审计配置
+audit:
+  enabled: true
+  log_file: "logs/sql_audit.log"
+  log_format: "json"
+  retain_days: 90

@@ -10,10 +10,10 @@ from src.dev.memory.qa_agent_memory import MemoryManager
 from src.dev.moddleware.qa_moddleware import DynamicModelManager
 from src.dev.prompt.qa_prompt import QAPromptManager
 from src.dev.retriever.konwage_retriever import KnowledgeRetriever
-from src.dev.state.graph_state import GraphState
+from src.dev.state.graph_state import QAGraphState
 from src.dev.utils.scholar_tools import fetch_url_content, extract_file_content
 
-def preprocess(state: GraphState) -> GraphState:
+def preprocess(state: QAGraphState) -> QAGraphState:
     """1. 前置处理：提取URL和文件信息"""
     user_input = state["user_input"]
     print(f"🚀 开始处理用户输入: {user_input[:50]}...")
@@ -39,7 +39,7 @@ def preprocess(state: GraphState) -> GraphState:
     return state
 
 
-def check_sensitive_question(state: GraphState) -> GraphState:
+def check_sensitive_question(state: QAGraphState) -> QAGraphState:
     # 1. 深拷贝原状态（保留操作，但最终只返回修改的键）
     state_copy = copy.deepcopy(state)
 
@@ -83,7 +83,7 @@ def check_sensitive_question(state: GraphState) -> GraphState:
     return state_copy
 
 
-def type_classification(state: GraphState) -> GraphState:
+def type_classification(state: QAGraphState) -> QAGraphState:
     """1.4. 类型识别：判断是业务问题还是普通问题"""
     print("🔍 进行问题类型识别...")
 
@@ -108,7 +108,7 @@ def type_classification(state: GraphState) -> GraphState:
     return state
 
 
-def summarize_input(state: GraphState) -> GraphState:
+def summarize_input(state: QAGraphState) -> QAGraphState:
     """1.3. 总结信息获取用户问题"""
     print("📝 总结用户问题...")
 
@@ -147,7 +147,7 @@ def summarize_input(state: GraphState) -> GraphState:
 
 
 @log_node_execution
-def retrieve_context(state: GraphState) -> GraphState:
+def retrieve_context(state: QAGraphState) -> QAGraphState:
     """2.1.1/通用检索：根据用户问题检索上下文"""
     print("🔎 检索相关知识...")
 
@@ -173,7 +173,7 @@ def retrieve_context(state: GraphState) -> GraphState:
 
 # ============== 8. 业务回答节点 ==============
 @log_node_execution
-def answer_business_question(state: GraphState) -> GraphState:
+def answer_business_question(state: QAGraphState) -> QAGraphState:
     try:
         """2.1. 回答客户业务信息"""
         print("🏦 生成业务问题回答...")
@@ -224,7 +224,7 @@ def answer_business_question(state: GraphState) -> GraphState:
 
 # ============== 9. 普通回答节点 ==============
 @log_node_execution
-def answer_general_question(state: GraphState) -> GraphState:
+def answer_general_question(state: QAGraphState) -> QAGraphState:
     # Dict[str, Any]: 只返回特定的类型而不是整个state
     try:
         """2.2. 回答客户普通问题"""
@@ -271,7 +271,7 @@ def answer_general_question(state: GraphState) -> GraphState:
 
 
 # ============== 10. 答案校验节点 ==============
-def validate_answer(state: GraphState) -> GraphState:
+def validate_answer(state: QAGraphState) -> QAGraphState:
     """2.3. 校验答案"""
     print("✅ 校验答案质量...")
 
@@ -309,7 +309,7 @@ def validate_answer(state: GraphState) -> GraphState:
 
 
 # ============== 11. 后置处理节点 ==============
-def postprocess_output(state: GraphState) -> GraphState:
+def postprocess_output(state: QAGraphState) -> QAGraphState:
     """3. END: 后置处理"""
     print("🔧 进行后置处理...")
 
@@ -340,7 +340,7 @@ def postprocess_output(state: GraphState) -> GraphState:
 
 
 # 异常处理
-def handle_retrieve_empty(state: GraphState) -> GraphState:
+def handle_retrieve_empty(state: QAGraphState) -> QAGraphState:
     state = copy.deepcopy(state)
     # 金融场景友好提示（避免生硬，同时加合规说明）
     state["answer"] = (
@@ -353,7 +353,7 @@ def handle_retrieve_empty(state: GraphState) -> GraphState:
 
 
 # 条件判断
-def validate_branch(state: GraphState):
+def validate_branch(state: QAGraphState):
     # 校验通过 → 后处理
     if state["answer_validated"]:
         return "validated"
@@ -365,7 +365,7 @@ def validate_branch(state: GraphState):
         return "max_retry"
 
 
-def retrieve_branch(state: GraphState):
+def retrieve_branch(state: QAGraphState):
     # 判定“无有效信息”的条件：
     # - 检索结果为空 / 长度过短（<50个字，排除无意义碎片）
     if not state.get("retrieval_result") or len(state["retrieval_result"].strip()) < 50:
