@@ -24,7 +24,7 @@ class QAGraphState(TypedDict):
     skip_subsequent: bool
     question_compliance: Annotated[Optional[str], LastValue(str)]
 
-@dataclass
+@dataclass()
 class DatabaseGraphState:
     """数据库智能体状态类"""
     # 用户输入相关
@@ -34,9 +34,9 @@ class DatabaseGraphState:
 
     # 数据库相关
     db_connection_string: str = ""
-    db_engine: Any = None
     db_metadata: Dict[str, Any] = None
     selected_tables: List[str] = None
+    db_type = None
 
     # SQL相关
     sql_query: str = ""

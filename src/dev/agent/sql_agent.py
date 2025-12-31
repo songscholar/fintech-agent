@@ -4,7 +4,7 @@
 """
 
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.constants import START
 from langgraph.checkpoint.memory import InMemorySaver
@@ -16,10 +16,11 @@ from src.dev.node.sql_agent_node import parse_user_intent, generate_sql_query, v
     execute_sql_query, check_human_approval, analyze_database_schema, self_correction_loop, finalize_response, \
     is_schema_query, should_require_human_approval, should_retry_sql
 from src.dev.state.graph_state import DatabaseGraphState
+from src.dev.utils.db_utils import DBEngineProvider
 from src.dev.utils.scholar_tools import generate_session_id
 from src.dev.utils.sql_executor import SQLExecutor
 
-def build_database_agent(db_connection_string: str = None):
+def build_database_agent():
     """
     构建数据库智能体流程图
 
@@ -132,18 +133,17 @@ class DatabaseAgent:
             self._initialize_database_connection()
 
         # 构建智能体
-        self.app = build_database_agent(db_connection_string)
+        self.app = build_database_agent()
 
         # 初始化SQL执行器
         self.sql_executor = SQLExecutor(self.db_manager)
 
     def _initialize_database_connection(self):
         """初始化数据库连接"""
+        dbEngineProvider = DBEngineProvider()
+
         try:
-            self.db_engine = self.db_manager.create_connection(
-                self.db_connection_string,
-                alias="primary"
-            )
+            self.db_engine = dbEngineProvider.init_engine(self.db_connection_string)
             print(f"✅ 数据库连接初始化成功")
         except Exception as e:
             print(f"❌ 数据库连接初始化失败: {str(e)}")
@@ -171,15 +171,16 @@ class DatabaseAgent:
         print(f"{'=' * 50}\n")
 
         # 准备初始状态
-        initial_state = DatabaseGraphState(
-            user_input=question,
-            session_id=session_id,
-            db_connection_string=self.db_connection_string,
-            db_engine=self.db_engine,
-            messages=[],
-            retry_count=0,
-            max_retries=3
-        )
+        initial_state = {
+            "user_input": question,
+            "session_id": session_id,
+            "db_connection_string": self.db_connection_string,
+            #todo 数据库类型以及数据源要修改成动态可配置的
+            "db_type": "sqlite",
+            "messages": [],
+            "retry_count": 0,
+            "max_retries": 3
+        }
 
         # 更新额外参数
         for key, value in kwargs.items():
@@ -189,35 +190,57 @@ class DatabaseAgent:
         # 执行流程图
         config = {"configurable": {"thread_id": session_id}}
 
-        try:
-            result_state = self.app.invoke(initial_state, config)
+        # try:
+        #     result_state = self.app.invoke(initial_state, config)
+        #
+        #     # 返回结果
+        #     return {
+        #         "answer": result_state.final_answer,
+        #         "session_id": session_id,
+        #         "sql_generated": result_state.generated_sql,
+        #         "sql_type": result_state.sql_type,
+        #         "requires_human_approval": result_state.requires_human_approval,
+        #         "human_approved": result_state.human_approved,
+        #         "execution_success": bool(
+        #             result_state.sql_execution_result and
+        #             result_state.sql_execution_result.get("success")
+        #         ),
+        #         "row_count": result_state.sql_execution_result.get("row_count", 0)
+        #         if result_state.sql_execution_result else 0,
+        #         "execution_time": result_state.sql_execution_result.get("execution_time", 0)
+        #         if result_state.sql_execution_result else 0,
+        #         "error": result_state.sql_error
+        #     }
+        #
+        # except Exception as e:
+        #     print(f"❌ 智能体执行异常: {str(e)}")
+        #     return {
+        #         "answer": f"处理请求时发生错误: {str(e)}",
+        #         "session_id": session_id,
+        #         "error": str(e)
+        #     }
 
-            # 返回结果
-            return {
-                "answer": result_state.final_answer,
-                "session_id": session_id,
-                "sql_generated": result_state.generated_sql,
-                "sql_type": result_state.sql_type,
-                "requires_human_approval": result_state.requires_human_approval,
-                "human_approved": result_state.human_approved,
-                "execution_success": bool(
-                    result_state.sql_execution_result and
-                    result_state.sql_execution_result.get("success")
-                ),
-                "row_count": result_state.sql_execution_result.get("row_count", 0)
-                if result_state.sql_execution_result else 0,
-                "execution_time": result_state.sql_execution_result.get("execution_time", 0)
-                if result_state.sql_execution_result else 0,
-                "error": result_state.sql_error
-            }
 
-        except Exception as e:
-            print(f"❌ 智能体执行异常: {str(e)}")
-            return {
-                "answer": f"处理请求时发生错误: {str(e)}",
-                "session_id": session_id,
-                "error": str(e)
-            }
+        result_state = self.app.invoke(initial_state, config)
+        # 返回结果
+        return {
+            "answer": result_state["final_answer"],
+            "session_id": session_id,
+            "sql_generated": result_state["generated_sql"],
+            "sql_type": result_state["sql_type"],
+            "requires_human_approval": result_state["requires_human_approval"],
+            "human_approved": result_state["human_approved"],
+            "execution_success": bool(
+                result_state["sql_execution_result"] and
+                result_state["sql_execution_result"].get("success")
+            ),
+            "row_count": result_state["sql_execution_result"].get("row_count", 0)
+            if result_state["sql_execution_result"] else 0,
+            "execution_time": result_state["sql_execution_result"].get("execution_time", 0)
+            if result_state["sql_execution_result"] else 0,
+            "error": result_state["sql_error"]
+        }
+
 
     def approve_sql(self, approval_index: int, approve: bool = True, comments: str = "") -> Dict[str, Any]:
         """
@@ -352,11 +375,11 @@ def test_database_agent():
             result = agent.ask(question, session_id)
 
             print(f"📤 回答类型: {result.get('sql_type', 'N/A')}")
-            print(f"🔧 生成SQL: {result.get('sql_generated', 'N/A')[:100]}...")
+            print(f"🔧 生成SQL: {result.get('sql_generated', 'N/A')}...")
             print(f"👥 需要人工审核: {result.get('requires_human_approval', False)}")
             print(f"✅ 执行成功: {result.get('execution_success', False)}")
             print(f"📊 返回行数: {result.get('row_count', 0)}")
-            print(f"📝 回答摘要: {result.get('answer', 'N/A')[:200]}...")
+            print(f"📝 回答摘要: {result.get('answer', 'N/A')}...")
             print("-" * 50)
 
         except Exception as e:
@@ -429,17 +452,24 @@ def _create_test_database(connection_string: str):
         print(f"❌ 创建测试数据库失败: {str(e)}")
 
 
-# ============== 10. 主函数 ==============
-
 if __name__ == "__main__":
+    # 设置数据库连接（示例）
+    # 实际使用时，请配置正确的数据库连接字符串
+    os.environ["TEST_DB_CONNECTION"] = "sqlite:///test_finance.db"
 
-    app = build_database_agent()
+    # 运行测试
+    test_database_agent()
 
-    png_data = app.get_graph().draw_mermaid_png()
-    with open('graph.png', 'wb') as f:
-        f.write(png_data)
-    print("图像已保存为graph.png")
-    # 可以尝试自动打开文件
-    import webbrowser, os
-
-    webbrowser.open('file://' + os.path.realpath('graph.png'))
+# 查看图结构
+# if __name__ == "__main__":
+#
+#     app = build_database_agent()
+#
+#     png_data = app.get_graph().draw_mermaid_png()
+#     with open('graph.png', 'wb') as f:
+#         f.write(png_data)
+#     print("图像已保存为graph.png")
+#     # 可以尝试自动打开文件
+#     import webbrowser, os
+#
+#     webbrowser.open('file://' + os.path.realpath('graph.png'))

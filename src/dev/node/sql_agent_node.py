@@ -1,14 +1,15 @@
 import os
 import json
 import re
+import traceback
 from typing import Dict, List, Any
 from datetime import datetime
 
 from src.dev.database.db_connection_manager import DatabaseConnectionManager
 from src.dev.moddleware.qa_moddleware import DynamicModelManager
-from src.dev.prompt.qa_prompt import QAPromptManager
 from src.dev.prompt.sql_prompt import SQLPromptManager
 from src.dev.state.graph_state import DatabaseGraphState
+from src.dev.utils.db_utils import DBEngineProvider
 from src.dev.utils.sql_executor import SQLExecutor
 
 def parse_user_intent(state: DatabaseGraphState) -> DatabaseGraphState:
@@ -32,7 +33,7 @@ def parse_user_intent(state: DatabaseGraphState) -> DatabaseGraphState:
             "remark": "用户输入为空，默认简单数据查询"
         }
         return state
-    sys_prompt = sql_manager.get_prompt(prompt_type="user_intent")
+    sys_prompt = sql_manager.get_prompt(prompt_type="user_intent",question=question)
 
 
     try:
@@ -61,7 +62,7 @@ def parse_user_intent(state: DatabaseGraphState) -> DatabaseGraphState:
             print(f"⚠️ LLM输出格式错误，尝试提取JSON内容: {str(e)}")
             # 容错：尝试从非标准输出中提取JSON（如模型多输出了文字）
             import re
-            json_match = re.search(r"\{.*\}", llm_output, re.DOTALL)
+            json_match = re.search(r"\{.*}", llm_output, re.DOTALL)
             if json_match:
                 parsed_intent = json.loads(json_match.group())
             else:
@@ -124,8 +125,10 @@ def parse_user_intent(state: DatabaseGraphState) -> DatabaseGraphState:
 def analyze_database_schema(state: DatabaseGraphState) -> DatabaseGraphState:
     """节点2: 分析数据库结构"""
     print("🏗️  分析数据库结构...")
+    dbEngineProvider = DBEngineProvider()
+    db_engine = dbEngineProvider.get_engine()
 
-    if not state.db_engine:
+    if not db_engine:
         print("⚠️  数据库未连接，跳过结构分析")
         return state
 
@@ -140,7 +143,7 @@ def analyze_database_schema(state: DatabaseGraphState) -> DatabaseGraphState:
             tables = None
 
         # 获取表结构元数据
-        metadata = db_manager.get_table_metadata(state.db_engine, tables)
+        metadata = db_manager.get_table_metadata(db_engine, tables)
 
         # 如果用户询问表结构，直接生成回答
         if state.parsed_intent and state.parsed_intent.get("action") == "describe":
@@ -166,7 +169,7 @@ def generate_sql_query(state: DatabaseGraphState) -> DatabaseGraphState:
         return state
 
     try:
-        prompt_manager = QAPromptManager()
+        prompt_manager = SQLPromptManager()
         model_manager = DynamicModelManager()
 
         # 准备上下文
@@ -177,6 +180,7 @@ def generate_sql_query(state: DatabaseGraphState) -> DatabaseGraphState:
             "sql_generation",
             question=state.user_input,
             schema=schema_info,
+            db_type=state.db_type,
             intent=json.dumps(user_intent, ensure_ascii=False)
         )
 
@@ -196,7 +200,7 @@ def generate_sql_query(state: DatabaseGraphState) -> DatabaseGraphState:
         state.generated_sql = generated_sql
         state.sql_type = sql_type
 
-        print(f"✅ SQL生成完成: {sql_type} - {generated_sql[:100]}...")
+        print(f"✅ SQL生成完成: {sql_type} - {generated_sql}...")
 
     except Exception as e:
         print(f"❌ SQL生成失败: {str(e)}")
@@ -206,35 +210,100 @@ def generate_sql_query(state: DatabaseGraphState) -> DatabaseGraphState:
 
 
 def validate_sql_statement(state: DatabaseGraphState) -> DatabaseGraphState:
-    """节点4: 验证SQL语句"""
-    print("✅ 验证SQL语句...")
+    """节点4: 基于大语言模型的SQL验证（支持SQL混描述、复杂场景校验）"""
+    print("✅ 基于LLM验证SQL语句...")
 
-    if not state.generated_sql:
+    prompt_manager = SQLPromptManager()
+    model_manager = DynamicModelManager()
+
+    # 待校验的原始内容（LLM生成的可能含描述的SQL）
+    content_to_validate = state.generated_sql or ""
+    if not content_to_validate:
         print("⚠️  无SQL语句需要验证")
+        state.sql_validation_result = {
+            "is_valid": False,
+            "extracted_sql": "",
+            "errors": ["无有效SQL内容需验证"],
+            "requires_human_approval": False,
+            "remark": "未提供待校验的SQL内容"
+        }
+        state.requires_human_approval = False
         return state
 
     try:
-        sql_executor = SQLExecutor(DatabaseConnectionManager())
-        validation_result = sql_executor.validate_sql(
-            state.generated_sql,
-            state.sql_type,
-            state.db_engine
+
+        prompt = prompt_manager.get_prompt(
+            "general_sql",
+            content_to_validate=content_to_validate,
         )
 
-        state.sql_validation_result = validation_result
-        state.requires_human_approval = validation_result.get("requires_human_approval", False)
+        # 2. 调用LLM执行校验
+        response = model_manager.get_model("default").invoke(prompt)
+        llm_output = response.content.strip()
+        print(f"📥 LLM校验输出: {llm_output}...")
 
+        # 3. 解析LLM输出的结构化JSON（容错处理）
+        try:
+            validation_result = json.loads(llm_output)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ LLM输出格式错误，尝试提取JSON: {str(e)}")
+            import re
+            json_match = re.search(r"{.*?}", llm_output, re.DOTALL)
+            if json_match:
+                validation_result = json.loads(json_match.group())
+            else:
+                # 兜底：校验失败
+                validation_result = {
+                    "is_valid": False,
+                    "extracted_sql": "",
+                    "errors": [f"LLM校验结果格式错误，无法解析: {str(e)}"],
+                    "requires_human_approval": False,
+                    "remark": "LLM输出异常，校验失败"
+                }
+
+        # 4. 补全缺失字段（避免后续节点报错）
+        required_fields = ["is_valid", "extracted_sql", "errors", "requires_human_approval", "remark"]
+        for field in required_fields:
+            if field not in validation_result:
+                if field == "is_valid":
+                    validation_result[field] = False
+                elif field == "extracted_sql":
+                    validation_result[field] = ""
+                elif field == "errors":
+                    validation_result[field] = [f"缺失{field}字段，校验结果不完整"]
+                elif field == "requires_human_approval":
+                    validation_result[field] = False
+                elif field == "remark":
+                    validation_result[field] = "校验结果字段不完整"
+
+        # 5. 更新状态（关键：用提取的纯SQL替换原generated_sql，供后续执行）
+        state.generated_sql = validation_result["extracted_sql"]  # 覆盖为纯SQL，避免执行时出错
+        state.sql_validation_result = validation_result
+        state.requires_human_approval = validation_result["requires_human_approval"]
+
+        # 6. 打印校验结果
         if validation_result["is_valid"]:
-            print("✅ SQL验证通过")
+            print(f"✅ SQL校验通过 | 提取纯SQL: {validation_result['extracted_sql'][:100]}...")
+            if validation_result["requires_human_approval"]:
+                print("🔒 该SQL需人工审核（含数据修改等高风险操作）")
         else:
-            print(f"❌ SQL验证失败: {validation_result.get('errors', [])}")
+            print(f"❌ SQL校验失败 | 错误: {validation_result['errors'][:2]}")
 
     except Exception as e:
-        print(f"❌ SQL验证异常: {str(e)}")
-        state.sql_validation_result = {
+        # 异常兜底：LLM调用失败时的降级处理
+        error_msg = f"LLM校验异常: {str(e)}"
+        stack_trace = traceback.format_exc()
+        print(f"❌ {error_msg}\n📋 堆栈: {stack_trace[:300]}...")
+        validation_result = {
             "is_valid": False,
-            "errors": [f"验证异常: {str(e)}"]
+            "extracted_sql": "",
+            "errors": [error_msg],
+            "requires_human_approval": False,
+            "remark": f"SQL校验过程中发生异常: {str(e)}"
         }
+        state.sql_validation_result = validation_result
+        state.requires_human_approval = False
+        state.sql_error = error_msg
 
     return state
 
@@ -271,6 +340,9 @@ def execute_sql_query(state: DatabaseGraphState) -> DatabaseGraphState:
     """节点6: 执行SQL查询"""
     print("🚀 执行SQL查询...")
 
+    dbEngineProvider = DBEngineProvider()
+    db_engine = dbEngineProvider.get_engine()
+
     if not state.generated_sql:
         print("⚠️  无SQL语句需要执行")
         return state
@@ -284,7 +356,7 @@ def execute_sql_query(state: DatabaseGraphState) -> DatabaseGraphState:
         sql_executor = SQLExecutor(DatabaseConnectionManager())
         execution_result = sql_executor.execute_sql(
             state.generated_sql,
-            state.db_engine,
+            db_engine,
             limit=1000  # 生产环境限制
         )
 
@@ -389,7 +461,7 @@ def finalize_response(state: DatabaseGraphState) -> DatabaseGraphState:
 
 # ============== 5. 辅助方法 ==============
 
-def format_schema_for_prompt(self, metadata: Dict) -> str:
+def format_schema_for_prompt(metadata: Dict) -> str:
     """格式化表结构信息用于提示词"""
     if not metadata or "tables" not in metadata:
         return "无可用表结构信息"
@@ -428,7 +500,7 @@ def format_schema_for_prompt(self, metadata: Dict) -> str:
     return schema_text
 
 
-def clean_generated_sql(self, sql: str) -> str:
+def clean_generated_sql(sql: str) -> str:
     """清理生成的SQL"""
     # 移除SQL标记
     sql = sql.replace("```sql", "").replace("```", "").strip()
@@ -492,7 +564,7 @@ def format_schema_summary(metadata: Dict[str, Any]) -> str:
 
     return summary
 
-def detect_sql_type(self, sql: str) -> str:
+def detect_sql_type(sql: str) -> str:
     """检测SQL类型"""
     sql_upper = sql.upper()
 
@@ -510,7 +582,7 @@ def detect_sql_type(self, sql: str) -> str:
         return "OTHER"
 
 
-def format_execution_result(self, result: Dict) -> str:
+def format_execution_result(result: Dict) -> str:
     """格式化执行结果"""
     if not result.get("success"):
         return f"执行失败: {result.get('error', '未知错误')}"
@@ -548,24 +620,24 @@ def format_execution_result(self, result: Dict) -> str:
     return response
 
 
-def correct_sql_with_errors(self, original_sql: str, errors: List[str], schema: Dict) -> str:
+def correct_sql_with_errors(original_sql: str, errors: List[str], schema: Dict) -> str:
     """根据错误修正SQL"""
     try:
-        prompt_manager = QAPromptManager()
+        prompt_manager = SQLPromptManager()
         model_manager = DynamicModelManager()
 
         prompt = prompt_manager.get_prompt(
             "sql_correction",
             original_sql=original_sql,
             errors="\n".join(errors),
-            schema=self._format_schema_for_prompt(schema)
+            schema=format_schema_for_prompt(schema)
         )
 
         model = model_manager.get_model("gpt-4o", {"temperature": 0.1})
         response = model.invoke(prompt)
 
         corrected_sql = response.content.strip()
-        corrected_sql = self._clean_generated_sql(corrected_sql)
+        corrected_sql = clean_generated_sql(corrected_sql)
 
         return corrected_sql
 
@@ -574,7 +646,7 @@ def correct_sql_with_errors(self, original_sql: str, errors: List[str], schema: 
         return original_sql
 
 
-def log_interaction(self, state: DatabaseGraphState):
+def log_interaction(state: DatabaseGraphState):
     """记录交互日志"""
     log_entry = {
         "session_id": state.session_id,
