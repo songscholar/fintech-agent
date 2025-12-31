@@ -7,62 +7,117 @@ from datetime import datetime
 from src.dev.database.db_connection_manager import DatabaseConnectionManager
 from src.dev.moddleware.qa_moddleware import DynamicModelManager
 from src.dev.prompt.qa_prompt import QAPromptManager
+from src.dev.prompt.sql_prompt import SQLPromptManager
 from src.dev.state.graph_state import DatabaseGraphState
 from src.dev.utils.sql_executor import SQLExecutor
 
 def parse_user_intent(state: DatabaseGraphState) -> DatabaseGraphState:
-    """节点1: 解析用户意图"""
-    print("🔍 解析用户意图...")
+    """
+    节点1: 基于大语言模型解析用户意图（替代原关键词匹配逻辑）
+    功能：通过LLM精准识别用户操作意图、目标、复杂度、涉及表名及是否需要审核
+    """
+    sql_manager = SQLPromptManager()
+    model_manager = DynamicModelManager()
 
-    user_input = state.user_input.lower()
-    intent = {
-        "action": "query",  # query, modify, describe, explain
-        "target": "data",  # data, schema, both
-        "complexity": "simple",  # simple, moderate, complex
-        "tables": []
-    }
+    print("🔍 基于LLM解析用户意图...")
+    question = state.user_input.strip()
+    if not question:
+        print("❌ 用户输入为空，返回默认意图")
+        state.parsed_intent = {
+            "action": "query",
+            "target": "data",
+            "complexity": "simple",
+            "tables": [],
+            "requires_human_approval": False,
+            "remark": "用户输入为空，默认简单数据查询"
+        }
+        return state
+    sys_prompt = sql_manager.get_prompt(prompt_type="user_intent")
 
-    # 检测操作类型
-    if any(word in user_input for word in ["查询", "查找", "获取", "select", "find"]):
-        intent["action"] = "query"
-    elif any(word in user_input for word in ["添加", "插入", "insert", "add"]):
-        intent["action"] = "modify"
-        intent["requires_human_approval"] = True
-    elif any(word in user_input for word in ["更新", "修改", "update", "modify"]):
-        intent["action"] = "modify"
-        intent["requires_human_approval"] = True
-    elif any(word in user_input for word in ["删除", "delete", "remove"]):
-        intent["action"] = "modify"
-        intent["requires_human_approval"] = True
-    elif any(word in user_input for word in ["表结构", "schema", "结构", "describe"]):
-        intent["action"] = "describe"
-        intent["target"] = "schema"
-    elif any(word in user_input for word in ["解释", "分析", "explain", "analyze"]):
-        intent["action"] = "explain"
 
-    # 检测目标表
-    # 这里简化处理，实际应该使用NER或模型识别
-    table_keywords = ["表", "table", "数据表"]
-    for keyword in table_keywords:
-        if keyword in user_input:
-            # 提取表名模式
-            words = user_input.split()
-            for i, word in enumerate(words):
-                if keyword in word and i < len(words) - 1:
-                    potential_table = words[i + 1]
-                    if len(potential_table) > 1:  # 简单过滤
-                        intent["tables"].append(potential_table)
+    try:
+        # 1. 构造提示词（系统提示+用户输入）
+        prompt = f"""
+        {sys_prompt}
+        
+        ### 用户当前输入
+        {question}
+        
+        ### 要求
+        严格按照示例格式输出JSON，字段不可缺失，无需额外说明文字。
+        """
 
-    # 检测复杂度
-    if any(word in user_input for word in ["复杂", "关联", "join", "统计", "汇总"]):
-        intent["complexity"] = "complex"
-    elif any(word in user_input for word in ["简单", "基本", "单表"]):
-        intent["complexity"] = "simple"
-    else:
-        intent["complexity"] = "moderate"
+        # 选择模型 todo 获取一个专门处理sql的模型
+        model = model_manager.get_model("default")
+        # 2. 调用LLM
+        response = model.invoke(prompt)
+        llm_output = response.content.strip()
+        print(f"📥 LLM原始输出: {llm_output[:200]}...")
 
-    state.parsed_intent = intent
-    print(f"✅ 意图解析结果: {intent}")
+        # 3. 解析LLM输出为结构化字典（容错处理）
+        try:
+            parsed_intent = json.loads(llm_output)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ LLM输出格式错误，尝试提取JSON内容: {str(e)}")
+            # 容错：尝试从非标准输出中提取JSON（如模型多输出了文字）
+            import re
+            json_match = re.search(r"\{.*\}", llm_output, re.DOTALL)
+            if json_match:
+                parsed_intent = json.loads(json_match.group())
+            else:
+                # 兜底：使用默认意图（避免流程中断）
+                print("⚠️ 无法提取JSON，使用默认意图")
+                parsed_intent = {
+                    "action": "query",
+                    "target": "data",
+                    "complexity": "moderate",
+                    "tables": [],
+                    "requires_human_approval": False,
+                    "remark": f"LLM输出格式错误，兜底默认意图: {llm_output[:100]}"
+                }
+
+        # 4. 校验字段完整性（兜底缺失字段）
+        required_fields = ["action", "target", "complexity", "tables", "requires_human_approval"]
+        for field in required_fields:
+            if field not in parsed_intent:
+                print(f"⚠️ 缺失字段{field}，使用默认值")
+                if field == "action":
+                    parsed_intent[field] = "query"
+                elif field == "target":
+                    parsed_intent[field] = "data"
+                elif field == "complexity":
+                    parsed_intent[field] = "moderate"
+                elif field == "tables":
+                    parsed_intent[field] = []
+                elif field == "requires_human_approval":
+                    parsed_intent[field] = False
+
+        # 5. 高危操作兜底校验（防止LLM误判，生产环境关键保障）
+        if parsed_intent["action"] in ["modify", "insert", "update", "delete"]:
+            parsed_intent["action"] = "modify"  # 统一为modify类型
+            parsed_intent["requires_human_approval"] = True  # 强制要求审核
+            print(f"🔒 高危操作校验：设置requires_human_approval=True")
+        else:
+            parsed_intent["requires_human_approval"] = False
+
+        # 6. 表名格式标准化（去除空格、统一小写，避免SQL语法错误）
+        parsed_intent["tables"] = [
+            table.strip().lower() for table in parsed_intent["tables"] if table.strip()
+        ]
+
+        # 7. 更新state
+        state.parsed_intent = parsed_intent
+        # 同步requires_human_approval到state（供后续节点直接使用）
+        state.requires_human_approval = parsed_intent["requires_human_approval"]
+        print(f"✅ 意图解析结果: {parsed_intent}")
+
+    except Exception as e:
+        print(f"❌ LLM意图解析异常: {str(e)}")
+        # 异常兜底：使用简化的关键词匹配（兼容原有逻辑）
+        state.parsed_intent = _fallback_keyword_based_intent(question)
+        state.requires_human_approval = state.parsed_intent["requires_human_approval"]
+        print(f"⚠️ 启用兜底关键词匹配，解析结果: {state.parsed_intent}")
+
     return state
 
 
@@ -573,3 +628,57 @@ def is_schema_query(state: DatabaseGraphState) -> str:
     if state.parsed_intent and state.parsed_intent.get("action") == "describe":
         return "schema_query"
     return "data_query"
+
+def _fallback_keyword_based_intent(user_input: str) -> Dict[str, Any]:
+    """
+    兜底逻辑：当LLM调用失败时，使用原关键词匹配逻辑（保证流程不中断）
+    直接复用原代码的核心逻辑，确保兼容性
+    """
+    user_input = user_input.lower()
+    intent = {
+        "action": "query",
+        "target": "data",
+        "complexity": "simple",
+        "tables": [],
+        "requires_human_approval": False,
+        "remark": "LLM调用失败，使用兜底关键词匹配"
+    }
+
+    # 检测操作类型
+    if any(word in user_input for word in ["查询", "查找", "获取", "select", "find"]):
+        intent["action"] = "query"
+    elif any(word in user_input for word in ["添加", "插入", "insert", "add"]):
+        intent["action"] = "modify"
+        intent["requires_human_approval"] = True
+    elif any(word in user_input for word in ["更新", "修改", "update", "modify"]):
+        intent["action"] = "modify"
+        intent["requires_human_approval"] = True
+    elif any(word in user_input for word in ["删除", "delete", "remove"]):
+        intent["action"] = "modify"
+        intent["requires_human_approval"] = True
+    elif any(word in user_input for word in ["表结构", "schema", "结构", "describe"]):
+        intent["action"] = "describe"
+        intent["target"] = "schema"
+    elif any(word in user_input for word in ["解释", "分析", "explain", "analyze"]):
+        intent["action"] = "explain"
+
+    # 检测目标表
+    table_keywords = ["表", "table", "数据表"]
+    for keyword in table_keywords:
+        if keyword in user_input:
+            words = user_input.split()
+            for i, word in enumerate(words):
+                if keyword in word and i < len(words) - 1:
+                    potential_table = words[i + 1]
+                    if len(potential_table) > 1:
+                        intent["tables"].append(potential_table.lower())
+
+    # 检测复杂度
+    if any(word in user_input for word in ["复杂", "关联", "join", "统计", "汇总"]):
+        intent["complexity"] = "complex"
+    elif any(word in user_input for word in ["简单", "基本", "单表"]):
+        intent["complexity"] = "simple"
+    else:
+        intent["complexity"] = "moderate"
+
+    return intent

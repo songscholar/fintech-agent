@@ -202,24 +202,21 @@ def test_financial_assistant():
 
 # ============== 16. 主函数 ==============
 if __name__ == "__main__":
-    # 设置API密钥
-    os.environ["OPENAI_API_KEY"] = ""  # 请替换为您的API密钥
-    os.environ["USER_AGENT"] = "fintech-agent/1.0 (songzuoqiang@gmail.com)"
 
     # 运行测试
     test_financial_assistant()
 
 # see graph structure
-# if __name__ == "__main__":
-#     """构建金融问答智能体流程图"""
-#
-#     app = build_financial_agent()
-#
-#     png_data = app.get_graph().draw_mermaid_png()
-#     with open('graph.png', 'wb') as f:
-#         f.write(png_data)
-#     print("图像已保存为graph.png")
-#     # 可以尝试自动打开文件
-#     import webbrowser, os
-#
-#     webbrowser.open('file://' + os.path.realpath('graph.png'))
+if __name__ == "__main__":
+    """构建金融问答智能体流程图"""
+
+    app = build_financial_agent()
+
+    # png_data = app.get_graph().draw_mermaid_png()
+    # with open('graph.png', 'wb') as f:
+    #     f.write(png_data)
+    # print("图像已保存为graph.png")
+    # # 可以尝试自动打开文件
+    # import webbrowser, os
+    #
+    # webbrowser.open('file://' + os.path.realpath('graph.png'))

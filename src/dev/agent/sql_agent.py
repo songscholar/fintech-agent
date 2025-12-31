@@ -19,7 +19,7 @@ from src.dev.state.graph_state import DatabaseGraphState
 from src.dev.utils.scholar_tools import generate_session_id
 from src.dev.utils.sql_executor import SQLExecutor
 
-def build_database_agent(db_connection_string: str = None) -> StateGraph:
+def build_database_agent(db_connection_string: str = None):
     """
     构建数据库智能体流程图
 
@@ -432,12 +432,14 @@ def _create_test_database(connection_string: str):
 # ============== 10. 主函数 ==============
 
 if __name__ == "__main__":
-    # 设置API密钥
-    os.environ["OPENAI_API_KEY"] = ""  # 请替换为您的API密钥
 
-    # 设置数据库连接（示例）
-    # 实际使用时，请配置正确的数据库连接字符串
-    os.environ["TEST_DB_CONNECTION"] = "sqlite:///test_finance.db"
+    app = build_database_agent()
 
-    # 运行测试
-    test_database_agent()
+    png_data = app.get_graph().draw_mermaid_png()
+    with open('graph.png', 'wb') as f:
+        f.write(png_data)
+    print("图像已保存为graph.png")
+    # 可以尝试自动打开文件
+    import webbrowser, os
+
+    webbrowser.open('file://' + os.path.realpath('graph.png'))
