@@ -4,7 +4,7 @@
 """
 
 import os
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from langgraph.graph import StateGraph, END
 from langgraph.constants import START
 from langgraph.checkpoint.memory import InMemorySaver
