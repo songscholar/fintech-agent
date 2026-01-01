@@ -16,84 +16,6 @@ class SQLExecutor:
         self.db_manager = db_connection_manager
         self.human_approval_queue = []
 
-    def validate_sql(self, sql: str, sql_type: str, engine) -> Dict[str, Any]:
-        """
-        验证SQL语句
-
-        Returns:
-            验证结果字典
-        """
-        validation_result = {
-            "is_valid": False,
-            "errors": [],
-            "warnings": [],
-            "estimated_cost": 0,
-            "requires_human_approval": False
-        }
-
-        try:
-            # 1. 基本语法检查
-            sql = sql.strip()
-            if not sql:
-                validation_result["errors"].append("SQL语句为空")
-                return validation_result
-
-            # 2. 检测SQL类型
-            sql_upper = sql.upper()
-            if "SELECT" in sql_upper:
-                detected_type = "SELECT"
-            elif "INSERT" in sql_upper:
-                detected_type = "INSERT"
-            elif "UPDATE" in sql_upper:
-                detected_type = "UPDATE"
-            elif "DELETE" in sql_upper:
-                detected_type = "DELETE"
-            else:
-                detected_type = "OTHER"
-
-            # 3. 检查是否匹配声明的类型
-            if sql_type and sql_type != detected_type:
-                validation_result["warnings"].append(
-                    f"SQL类型不匹配: 声明为{sql_type}，检测为{detected_type}"
-                )
-
-            # 4. 安全检查
-            security_issues = self._check_sql_security(sql)
-            if security_issues:
-                validation_result["errors"].extend(security_issues)
-
-            # 5. 语法检查（使用数据库的EXPLAIN或PREPARE）
-            try:
-                with engine.connect() as conn:
-                    if "SELECT" in sql_upper:
-                        # 尝试执行EXPLAIN来验证
-                        explain_sql = f"EXPLAIN {sql}"
-                        conn.execute(text(explain_sql))
-                    else:
-                        # 对于DML，尝试PREPARE
-                        conn.execute(text(f"PREPARE test_stmt AS {sql}"))
-                        conn.execute(text("DEALLOCATE test_stmt"))
-            except Exception as e:
-                validation_result["errors"].append(f"SQL语法错误: {str(e)}")
-
-            # 6. 判断是否需要人工审核
-            if detected_type in ["INSERT", "UPDATE", "DELETE"]:
-                validation_result["requires_human_approval"] = True
-                validation_result["warnings"].append("DML操作需要人工审核")
-
-            # 7. 估算执行成本
-            validation_result["estimated_cost"] = self._estimate_execution_cost(sql, engine)
-
-            # 8. 如果没有错误，标记为有效
-            if not validation_result["errors"]:
-                validation_result["is_valid"] = True
-
-            return validation_result
-
-        except Exception as e:
-            validation_result["errors"].append(f"验证过程异常: {str(e)}")
-            return validation_result
-
     def _check_sql_security(self, sql: str) -> List[str]:
         """检查SQL安全"""
         security_issues = []
@@ -157,7 +79,7 @@ class SQLExecutor:
             with engine.connect() as conn:
                 # 对于SELECT查询，添加LIMIT
                 if "SELECT" in sql.upper() and "LIMIT" not in sql.upper():
-                    sql = f"{sql} LIMIT {limit}"
+                    sql = f"{sql[:-1]} LIMIT {limit}"
 
                 # 执行SQL
                 db_result = conn.execute(text(sql))
@@ -165,10 +87,14 @@ class SQLExecutor:
                 # 获取列名
                 result["columns"] = list(db_result.keys())
 
-                # 获取数据
+                # 2. 获取数据（关键修改：手动构建字典，避免dict(row)转换错误）
                 rows = db_result.fetchall()
-                result["data"] = [dict(row) for row in rows]
-                result["row_count"] = len(rows)
+                result["data"] = []
+                for row in rows:
+                    # 用“列名+对应的值”配对，构建字典（兼容所有SQLAlchemy版本）
+                    row_dict = {col: row[i] for i, col in enumerate(result["columns"])}
+                    result["data"].append(row_dict)
+                    result["row_count"] += 1
 
                 # 计算执行时间
                 execution_time = (datetime.now() - start_time).total_seconds()

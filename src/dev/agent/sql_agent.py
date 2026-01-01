@@ -340,9 +340,9 @@ def test_database_agent():
     # 测试配置 - 这里使用示例连接字符串，实际使用时需要替换
     test_db_connection = os.getenv("TEST_DB_CONNECTION", "sqlite:///:memory:")
 
-    # 创建测试数据库（如果使用SQLite内存数据库）
-    if "sqlite" in test_db_connection:
-        _create_test_database(test_db_connection)
+    # 创建测试数据库（如果使用SQLite内存数据库）,只有第一次执行的时候需要初始化数据，后续无需进行数据的初始化
+    # if "sqlite" in test_db_connection:
+    #     _create_test_database(test_db_connection)
 
     # 创建智能体实例
     agent = DatabaseAgent(test_db_connection)
@@ -445,6 +445,9 @@ def _create_test_database(connection_string: str):
                 {'user_id': 1, 'amount': -200.0, 'type': '取款', 'description': '购物'},
                 {'user_id': 2, 'amount': 500.0, 'type': '存款', 'description': '转账'},
             ])
+
+            # 关键：提交事务，让数据持久化
+            conn.commit()
 
         print("✅ 测试数据库创建完成")
 

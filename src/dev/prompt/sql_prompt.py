@@ -236,64 +236,64 @@ class SQLPromptManager:
             - 禁止使用高危函数：EXECUTE、CALL、LOAD DATA、INTO OUTFILE等。
             
             ### 输出格式要求（仅返回JSON，无多余文字）
-            {
+            {{
               "is_valid": true/false,  // 整体校验是否通过（语法合法+无禁止操作）
               "extracted_sql": "提取的纯SQL语句（无描述）",  // 如"SELECT * FROM users;"
               "errors": ["错误信息列表，无错误则为[]"],  // 每个错误需明确维度（语法/安全/场景）+ 原因
               "requires_human_approval": true/false,  // 是否需要人工审核（安全限制操作需审核）
               "remark": "校验总结（简要说明提取和校验结果）"
-            }
+            }}
             
             ### 示例参考
             #### 示例1：待校验内容 = "以下SQL查询2023年交易数据：SELECT * FROM transactions WHERE created_at BETWEEN '2023-01-01' AND '2023-12-31';"
             输出：
-            {
+            {{
               "is_valid": true,
               "extracted_sql": "SELECT * FROM transactions WHERE created_at BETWEEN '2023-01-01' AND '2023-12-31';",
               "errors": [],
               "requires_human_approval": false,
               "remark": "成功提取SELECT语句，语法合法，属于安全查询操作，无需人工审核"
-            }
+            }}
             
             #### 示例2：待校验内容 = "为用户添加记录：INSERT INTO users (username, phone) VALUES ('王五', '13500135000'); 请执行"
             输出：
-            {
+            {{
               "is_valid": true,
               "extracted_sql": "INSERT INTO users (username, phone) VALUES ('王五', '13500135000');",
               "errors": [],
               "requires_human_approval": true,
               "remark": "成功提取INSERT语句，语法合法，属于数据修改操作，需人工审核"
-            }
+            }}
             
             #### 示例3：待校验内容 = "删除无效数据：DELETE FROM transactions;" （无WHERE条件）
             输出：
-            {
+            {{
               "is_valid": false,
               "extracted_sql": "DELETE FROM transactions;",
               "errors": ["安全校验失败：DELETE操作无WHERE条件，属于高危操作，禁止执行"],
               "requires_human_approval": false,
               "remark": "成功提取DELETE语句，语法合法，但存在高危安全风险，校验不通过"
-            }
+            }}
             
             #### 示例4：待校验内容 = "查询用户表结构：DESCRIBE users; 同时统计总人数：SELECT COUNT(*) FROM users;"
             输出：
-            {
+            {{
               "is_valid": true,
               "extracted_sql": "DESCRIBE users; SELECT COUNT(*) FROM users;",
               "errors": [],
               "requires_human_approval": false,
               "remark": "成功提取2条SQL语句（表结构查询+统计查询），语法合法，无需人工审核"
-            }
+            }}
             
             #### 示例5：待校验内容 = "这是一个查询，没有实际SQL"
             输出：
-            {
+            {{
               "is_valid": false,
               "extracted_sql": "",
               "errors": ["SQL提取失败：待校验内容中无有效可执行SQL语句"],
               "requires_human_approval": false,
               "remark": "未提取到任何有效SQL，校验不通过"
-            }
+            }}
             
             ### 待校验内容
             {content_to_validate}

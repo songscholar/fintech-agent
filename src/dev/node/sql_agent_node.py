@@ -219,22 +219,13 @@ def validate_sql_statement(state: DatabaseGraphState) -> DatabaseGraphState:
     # 待校验的原始内容（LLM生成的可能含描述的SQL）
     content_to_validate = state.generated_sql or ""
     if not content_to_validate:
-        print("⚠️  无SQL语句需要验证")
-        state.sql_validation_result = {
-            "is_valid": False,
-            "extracted_sql": "",
-            "errors": ["无有效SQL内容需验证"],
-            "requires_human_approval": False,
-            "remark": "未提供待校验的SQL内容"
-        }
-        state.requires_human_approval = False
         return state
 
     try:
 
         prompt = prompt_manager.get_prompt(
             "general_sql",
-            content_to_validate=content_to_validate,
+            content_to_validate=content_to_validate
         )
 
         # 2. 调用LLM执行校验
@@ -283,7 +274,7 @@ def validate_sql_statement(state: DatabaseGraphState) -> DatabaseGraphState:
 
         # 6. 打印校验结果
         if validation_result["is_valid"]:
-            print(f"✅ SQL校验通过 | 提取纯SQL: {validation_result['extracted_sql'][:100]}...")
+            print(f"✅ SQL校验通过 | 提取纯SQL: {validation_result['extracted_sql']}...")
             if validation_result["requires_human_approval"]:
                 print("🔒 该SQL需人工审核（含数据修改等高风险操作）")
         else:
@@ -363,7 +354,7 @@ def execute_sql_query(state: DatabaseGraphState) -> DatabaseGraphState:
         state.sql_execution_result = execution_result
 
         if execution_result["success"]:
-            print(f"✅ SQL执行成功: {execution_result['row_count']}行数据")
+            print(f"✅ SQL执行成功: {len(execution_result)}行数据")
 
             # 格式化结果
             formatted_result = format_execution_result(execution_result)
