@@ -438,6 +438,7 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .messages {
@@ -450,6 +451,35 @@ textarea {
   min-height: 0;
 }
 
+.scroll-down {
+  position: absolute;
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(86, 120, 255, 0.35);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(225, 235, 255, 0.92));
+  box-shadow: 0 12px 28px rgba(86, 120, 255, 0.15);
+  color: #1f2a3a;
+  font-size: 18px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.scroll-down:hover {
+  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 16px 32px rgba(86, 120, 255, 0.2);
+  border-color: rgba(86, 120, 255, 0.5);
+}
+
+.scroll-down:active {
+  transform: translateX(-50%) translateY(0);
+}
 .empty-cta {
   margin: auto;
   text-align: center;

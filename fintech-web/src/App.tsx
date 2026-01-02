@@ -88,12 +88,14 @@ function App() {
   const [hoverMsgId, setHoverMsgId] = useState<string | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
+  const [showScrollDown, setShowScrollDown] = useState(false);
   const hideMenuTimer = useRef<number | null>(null);
   const hideMenuCloseTimer = useRef<number | null>(null);
   const avatarWrapRef = useRef<HTMLDivElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
   const [editingContext, setEditingContext] = useState<{
     userId: string;
     assistantId?: string;
@@ -118,6 +120,16 @@ function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showLogin) {
+        setShowLogin(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showLogin]);
 
   const mockReply = (text: string) => {
     const brief = text.length > 36 ? `${text.slice(0, 36)}...` : text || '你的想法';
@@ -361,6 +373,28 @@ function App() {
     resizeTextarea();
   };
 
+  const cancelEdit = () => {
+    setEditingMsgId(null);
+    setEditingContext(null);
+    setInput('');
+    setUploads([]);
+  };
+
+  const scrollToBottom = () => {
+    const el = messagesRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    setShowScrollDown(false);
+  };
+
+  const handleMessagesScroll = () => {
+    const el = messagesRef.current;
+    if (!el) return;
+    const threshold = 120;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    setShowScrollDown(!atBottom);
+  };
+
   return (
     <div className="layout">
       <div className="ambient softly" />
@@ -493,7 +527,11 @@ function App() {
         </section>
 
         <section className="chat glass">
-          <div className="messages">
+          <div
+            className="messages"
+            ref={messagesRef}
+            onScroll={handleMessagesScroll}
+          >
             {user ? (
               messages.map((msg) => (
                 <div
@@ -585,6 +623,12 @@ function App() {
             <div ref={chatEndRef} />
           </div>
 
+          {showScrollDown && (
+            <button className="scroll-down" onClick={scrollToBottom} aria-label="回到底部">
+              ↓
+            </button>
+          )}
+
           <div className="prompt-grid">
             {prompts.map((prompt) => (
               <button
@@ -599,6 +643,12 @@ function App() {
           </div>
 
           <div className="composer">
+            {editingContext && (
+              <div className="editing-banner">
+                正在重新编辑一条消息，发送后将替换原有消息
+                <button className="ghost-btn" onClick={cancelEdit}>取消编辑</button>
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               value={input}
@@ -652,16 +702,23 @@ function App() {
                   onChange={(e) => handleFiles(e.target.files)}
                   style={{ display: 'none' }}
                 />
-                <div className="hint">Shift+Enter 换行 · Enter 发送 · 支持粘贴/拖拽文件</div>
+                <div className="hint">
+                  Shift+Enter 换行 · Enter 发送 · 支持粘贴/拖拽文件 · 单文件≤10MB
+                </div>
               </div>
               <button
                 className="pill-btn primary"
                 onClick={() => handleSend()}
                 disabled={(!input.trim() && uploads.length === 0) || isThinking}
               >
-                发送
+                {isThinking ? '发送中...' : '发送'}
               </button>
             </div>
+            {showScrollDown && (
+              <button className="scroll-down" onClick={scrollToBottom} aria-label="回到底部">
+                ↓
+              </button>
+            )}
           </div>
         </section>
       </main>
