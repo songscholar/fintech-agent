@@ -449,6 +449,7 @@ textarea {
 .message.user {
   justify-content: flex-end;
   flex-direction: row-reverse;
+  text-align: right;
 }
 
 .avatar {
@@ -473,6 +474,10 @@ textarea {
   padding: 10px 12px;
   background: rgba(255, 255, 255, 0.75);
   box-shadow: 0 12px 24px rgba(31, 41, 51, 0.06);
+}
+
+.message.user .bubble {
+  margin-left: auto;
 }
 
 .message.user .bubble {
