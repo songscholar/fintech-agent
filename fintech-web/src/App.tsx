@@ -125,6 +125,10 @@ function App() {
   };
 
   const handleSend = (preset?: string) => {
+    if (!user) {
+      setShowLogin(true);
+      return;
+    }
     const content = (preset ?? input).trim();
     if ((!content && uploads.length === 0) || isThinking) return;
 
@@ -490,65 +494,77 @@ function App() {
 
         <section className="chat glass">
           <div className="messages">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={clsx('message', msg.role === 'user' ? 'user' : 'assistant')}
-                onMouseEnter={() => setHoverMsgId(msg.id)}
-                onMouseLeave={() => setHoverMsgId((prev) => (prev === msg.id ? null : prev))}
-              >
-                <div className="avatar">{msg.role === 'user' ? '🙂' : '✨'}</div>
-                <div className="bubble">
-                  <div className="bubble-meta">
-                    <span className="who">{msg.role === 'user' ? '你' : 'AI'}</span>
-                    <span className="time">{msg.timestamp}</span>
-                  </div>
-                  <div className="bubble-text">
-                    {msg.content.split('\n').map((line, idx) => (
-                      <p key={idx}>{line}</p>
-                    ))}
-                  </div>
-                  {msg.role === 'assistant' && (
-                    <div
-                      className={clsx(
-                        'msg-actions',
-                        (hoverMsgId === msg.id || msg.id === latestAssistantId) && 'visible'
-                      )}
-                    >
-                      <button className="action-btn" onClick={() => handleCopy(msg.content)}>
-                        复制
-                      </button>
-                      <button className="action-btn" onClick={() => handleRegenerate(msg)}>
-                        重新生成
-                      </button>
-                      <button className="action-btn">👍</button>
-                      <button className="action-btn">👎</button>
+            {user ? (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={clsx('message', msg.role === 'user' ? 'user' : 'assistant')}
+                  onMouseEnter={() => setHoverMsgId(msg.id)}
+                  onMouseLeave={() => setHoverMsgId((prev) => (prev === msg.id ? null : prev))}
+                >
+                  <div className="avatar">{msg.role === 'user' ? '🙂' : '✨'}</div>
+                  <div className="bubble">
+                    <div className="bubble-meta">
+                      <span className="who">{msg.role === 'user' ? '你' : 'AI'}</span>
+                      <span className="time">{msg.timestamp}</span>
                     </div>
-                  )}
-                  {msg.role === 'user' && (
-                    <div
-                      className={clsx('msg-actions', hoverMsgId === msg.id && 'visible')}
-                    >
-                      <button className="action-btn" onClick={() => handleCopy(msg.content)}>
-                        复制
-                      </button>
-                      <button className="action-btn" onClick={() => handleEditUserMessage(msg)}>
-                        重新编辑
-                      </button>
-                    </div>
-                  )}
-                  {!!msg.attachments?.length && (
-                    <div className="attachments">
-                      {msg.attachments.map((file) => (
-                        <span key={file.id} className="attach-pill">
-                          📎 {file.name}
-                        </span>
+                    <div className="bubble-text">
+                      {msg.content.split('\n').map((line, idx) => (
+                        <p key={idx}>{line}</p>
                       ))}
                     </div>
-                  )}
+                    {msg.role === 'assistant' && (
+                      <div
+                        className={clsx(
+                          'msg-actions',
+                          (hoverMsgId === msg.id || msg.id === latestAssistantId) && 'visible'
+                        )}
+                      >
+                        <button className="action-btn" onClick={() => handleCopy(msg.content)}>
+                          复制
+                        </button>
+                        <button className="action-btn" onClick={() => handleRegenerate(msg)}>
+                          重新生成
+                        </button>
+                        <button className="action-btn">👍</button>
+                        <button className="action-btn">👎</button>
+                      </div>
+                    )}
+                    {msg.role === 'user' && (
+                      <div
+                        className={clsx('msg-actions', hoverMsgId === msg.id && 'visible')}
+                      >
+                        <button className="action-btn" onClick={() => handleCopy(msg.content)}>
+                          复制
+                        </button>
+                        <button className="action-btn" onClick={() => handleEditUserMessage(msg)}>
+                          重新编辑
+                        </button>
+                      </div>
+                    )}
+                    {!!msg.attachments?.length && (
+                      <div className="attachments">
+                        {msg.attachments.map((file) => (
+                          <span key={file.id} className="attach-pill">
+                            📎 {file.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div className="empty-cta">
+                <div className="empty-title">登录后开始你的专属对话</div>
+                <div className="empty-desc">
+                  解锁历史记录、文件上传、快捷提示与个性化建议。
+                </div>
+                <button className="pill-btn primary" onClick={() => setShowLogin(true)}>
+                  去登录
+                </button>
               </div>
-            ))}
+            )}
 
             {isThinking && (
               <div className="message assistant thinking">
@@ -653,6 +669,9 @@ function App() {
       {showLogin && (
         <div className="auth-overlay" onClick={() => setShowLogin(false)}>
           <div className="auth-card glass" onClick={(e) => e.stopPropagation()}>
+            <button className="auth-close" onClick={() => setShowLogin(false)} aria-label="取消登录">
+              ×
+            </button>
             <div className="auth-title">登录</div>
             <div className="auth-desc">填写昵称与邮箱，个性化你的体验。</div>
             <div className="form">

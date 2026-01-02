@@ -450,6 +450,28 @@ textarea {
   min-height: 0;
 }
 
+.empty-cta {
+  margin: auto;
+  text-align: center;
+  padding: 32px 40px;
+  border-radius: 16px;
+  border: 1px dashed rgba(86, 120, 255, 0.25);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 12px 30px rgba(86, 120, 255, 0.1);
+}
+
+.empty-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1f2933;
+  margin-bottom: 8px;
+}
+
+.empty-desc {
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
 .message {
   display: flex;
   gap: 10px;
@@ -780,6 +802,7 @@ textarea {
   flex-direction: column;
   gap: 12px;
   animation: floatUp 380ms ease;
+  position: relative;
 }
 
 .auth-title {
@@ -823,6 +846,29 @@ textarea {
 .auth-hint {
   color: var(--muted);
   font-size: 13px;
+}
+
+.auth-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.9);
+  color: #1f2933;
+  cursor: pointer;
+  font-size: 18px;
+  display: grid;
+  place-items: center;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.auth-close:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(86, 120, 255, 0.18);
+  border-color: rgba(86, 120, 255, 0.35);
 }
 
 .avatar.tiny {
