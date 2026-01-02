@@ -1,4 +1,11 @@
-import type { ClipboardEvent, DragEvent, MouseEvent } from 'react';
+import type {
+  ClipboardEvent,
+  DragEvent,
+  MouseEvent,
+  ChangeEvent,
+  KeyboardEvent,
+  CompositionEvent
+} from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 
@@ -78,11 +85,19 @@ function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [menuClosing, setMenuClosing] = useState(false);
+  const [hoverMsgId, setHoverMsgId] = useState<string | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [isComposing, setIsComposing] = useState(false);
   const hideMenuTimer = useRef<number | null>(null);
   const hideMenuCloseTimer = useRef<number | null>(null);
   const avatarWrapRef = useRef<HTMLDivElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [editingContext, setEditingContext] = useState<{
+    userId: string;
+    assistantId?: string;
+  } | null>(null);
 
   const accentColor = useMemo(() => {
     const palette = ['#6c5ce7', '#22a2c3', '#6ba368'];
@@ -120,12 +135,32 @@ function App() {
       timestamp: '刚刚',
       attachments: uploads
     };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => {
+      if (editingContext) {
+        const idx = prev.findIndex((m) => m.id === editingContext.userId);
+        let base = prev;
+        if (idx !== -1) {
+          const assistantAfter = editingContext.assistantId
+            ? prev.find((m) => m.id === editingContext.assistantId)
+            : prev.slice(idx + 1).find((m) => m.role === 'assistant');
+          const assistantId = assistantAfter?.id;
+          base = prev.filter((m, i) => {
+            if (i === idx) return false;
+            if (assistantId && m.id === assistantId) return false;
+            return true;
+          });
+        }
+        return [...base, userMsg];
+      }
+      return [...prev, userMsg];
+    });
     setInput('');
     setUploads([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    setEditingMsgId(null);
+    setEditingContext(null);
     setIsThinking(true);
 
     setTimeout(() => {
@@ -244,6 +279,82 @@ function App() {
     const next = e.relatedTarget as Node | null;
     if (avatarWrapRef.current && next && avatarWrapRef.current.contains(next)) return;
     startHideMenu();
+  };
+
+  const resizeTextarea = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const style = window.getComputedStyle(el);
+    const lineHeight = parseFloat(style.lineHeight || '20');
+    const padding =
+      parseFloat(style.paddingTop || '0') + parseFloat(style.paddingBottom || '0');
+    const maxHeight = lineHeight * 5 + padding;
+    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  };
+
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    resizeTextarea();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleCompositionStart = (_e: CompositionEvent<HTMLTextAreaElement>) => {
+    setIsComposing(true);
+  };
+
+  const handleCompositionEnd = (_e: CompositionEvent<HTMLTextAreaElement>) => {
+    setIsComposing(false);
+  };
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [input]);
+
+  const latestAssistantId = useMemo(() => {
+    const last = [...messages].reverse().find((m) => m.role === 'assistant');
+    return last?.id ?? null;
+  }, [messages]);
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {});
+  };
+
+  const handleRegenerate = (msg: Message) => {
+    if (msg.role !== 'assistant') return;
+    const idx = messages.findIndex((m) => m.id === msg.id);
+    const sourceUser = [...messages.slice(0, idx)].reverse().find((m) => m.role === 'user');
+    const prompt = sourceUser?.content ?? msg.content;
+    setIsThinking(true);
+    setTimeout(() => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id
+            ? { ...m, id: crypto.randomUUID(), content: mockReply(prompt), timestamp: '刚刚' }
+            : m
+        )
+      );
+      setIsThinking(false);
+    }, 600);
+  };
+
+  const handleEditUserMessage = (msg: Message) => {
+    setEditingMsgId(msg.id);
+    const idx = messages.findIndex((m) => m.id === msg.id);
+    const assistantAfter = messages.slice(idx + 1).find((m) => m.role === 'assistant');
+    setEditingContext({ userId: msg.id, assistantId: assistantAfter?.id });
+    setInput(msg.content);
+    setUploads(msg.attachments ?? []);
+    textareaRef.current?.focus();
+    resizeTextarea();
   };
 
   return (
@@ -383,6 +494,8 @@ function App() {
               <div
                 key={msg.id}
                 className={clsx('message', msg.role === 'user' ? 'user' : 'assistant')}
+                onMouseEnter={() => setHoverMsgId(msg.id)}
+                onMouseLeave={() => setHoverMsgId((prev) => (prev === msg.id ? null : prev))}
               >
                 <div className="avatar">{msg.role === 'user' ? '🙂' : '✨'}</div>
                 <div className="bubble">
@@ -395,6 +508,35 @@ function App() {
                       <p key={idx}>{line}</p>
                     ))}
                   </div>
+                  {msg.role === 'assistant' && (
+                    <div
+                      className={clsx(
+                        'msg-actions',
+                        (hoverMsgId === msg.id || msg.id === latestAssistantId) && 'visible'
+                      )}
+                    >
+                      <button className="action-btn" onClick={() => handleCopy(msg.content)}>
+                        复制
+                      </button>
+                      <button className="action-btn" onClick={() => handleRegenerate(msg)}>
+                        重新生成
+                      </button>
+                      <button className="action-btn">👍</button>
+                      <button className="action-btn">👎</button>
+                    </div>
+                  )}
+                  {msg.role === 'user' && (
+                    <div
+                      className={clsx('msg-actions', hoverMsgId === msg.id && 'visible')}
+                    >
+                      <button className="action-btn" onClick={() => handleCopy(msg.content)}>
+                        复制
+                      </button>
+                      <button className="action-btn" onClick={() => handleEditUserMessage(msg)}>
+                        重新编辑
+                      </button>
+                    </div>
+                  )}
                   {!!msg.attachments?.length && (
                     <div className="attachments">
                       {msg.attachments.map((file) => (
@@ -442,14 +584,20 @@ function App() {
 
           <div className="composer">
             <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="和我聊聊：描述你的想法或想要的风格"
-              rows={3}
+              onChange={handleInputChange}
+              placeholder={
+                user ? '和我聊聊：描述你的想法或想要的风格' : '请先登录后再开始对话'
+              }
+              rows={1}
               onPaste={handlePaste}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
               disabled={!user}
             />
             {uploads.length > 0 && (
