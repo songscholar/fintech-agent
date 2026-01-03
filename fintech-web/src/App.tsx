@@ -89,6 +89,10 @@ function App() {
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const toastTimer = useRef<number | null>(null);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set());
   const hideMenuTimer = useRef<number | null>(null);
   const hideMenuCloseTimer = useRef<number | null>(null);
   const avatarWrapRef = useRef<HTMLDivElement | null>(null);
@@ -130,6 +134,16 @@ function App() {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [showLogin]);
+
+  useEffect(() => {
+    if (toast) {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+    }
+    return () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
+  }, [toast]);
 
   const mockReply = (text: string) => {
     const brief = text.length > 36 ? `${text.slice(0, 36)}...` : text || '你的想法';
@@ -341,7 +355,14 @@ function App() {
   }, [messages]);
 
   const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text).catch(() => {});
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setToast({ type: 'success', text: '已复制到剪贴板' });
+      })
+      .catch(() => {
+        setToast({ type: 'error', text: '复制失败，请重试' });
+      });
   };
 
   const handleRegenerate = (msg: Message) => {
@@ -360,6 +381,37 @@ function App() {
       );
       setIsThinking(false);
     }, 600);
+    setToast({ type: 'success', text: '已重新生成' });
+  };
+
+  const handleLike = (id: string) => {
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      const disliked = new Set(dislikedIds);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        disliked.delete(id);
+        setDislikedIds(disliked);
+      }
+      return next;
+    });
+  };
+
+  const handleDislike = (id: string) => {
+    setDislikedIds((prev) => {
+      const next = new Set(prev);
+      const liked = new Set(likedIds);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        liked.delete(id);
+        setLikedIds(liked);
+      }
+      return next;
+    });
   };
 
   const handleEditUserMessage = (msg: Message) => {
@@ -558,25 +610,61 @@ function App() {
                           (hoverMsgId === msg.id || msg.id === latestAssistantId) && 'visible'
                         )}
                       >
-                        <button className="action-btn" onClick={() => handleCopy(msg.content)}>
-                          复制
+                        <button
+                          className="action-btn icon"
+                          title="复制"
+                          aria-label="复制"
+                          onClick={() => handleCopy(msg.content)}
+                        >
+                          ⧉
                         </button>
-                        <button className="action-btn" onClick={() => handleRegenerate(msg)}>
-                          重新生成
+                        <button
+                          className="action-btn icon"
+                          title="重新生成"
+                          aria-label="重新生成"
+                          onClick={() => handleRegenerate(msg)}
+                        >
+                          ↺
                         </button>
-                        <button className="action-btn">👍</button>
-                        <button className="action-btn">👎</button>
+                        <button
+                          className="action-btn icon"
+                          title="点赞"
+                          aria-label="点赞"
+                          onClick={() => handleLike(msg.id)}
+                          data-active={likedIds.has(msg.id) || undefined}
+                        >
+                          👍
+                        </button>
+                        <button
+                          className="action-btn icon"
+                          title="点踩"
+                          aria-label="点踩"
+                          onClick={() => handleDislike(msg.id)}
+                          data-active={dislikedIds.has(msg.id) || undefined}
+                        >
+                          👎
+                        </button>
                       </div>
                     )}
                     {msg.role === 'user' && (
                       <div
                         className={clsx('msg-actions', hoverMsgId === msg.id && 'visible')}
                       >
-                        <button className="action-btn" onClick={() => handleCopy(msg.content)}>
-                          复制
+                        <button
+                          className="action-btn icon"
+                          title="复制"
+                          aria-label="复制"
+                          onClick={() => handleCopy(msg.content)}
+                        >
+                          ⧉
                         </button>
-                        <button className="action-btn" onClick={() => handleEditUserMessage(msg)}>
-                          重新编辑
+                        <button
+                          className="action-btn icon"
+                          title="重新编辑"
+                          aria-label="重新编辑"
+                          onClick={() => handleEditUserMessage(msg)}
+                        >
+                          ✎
                         </button>
                       </div>
                     )}
@@ -645,8 +733,10 @@ function App() {
           <div className="composer">
             {editingContext && (
               <div className="editing-banner">
-                正在重新编辑一条消息，发送后将替换原有消息
-                <button className="ghost-btn" onClick={cancelEdit}>取消编辑</button>
+                <div className="editing-text">正在重新编辑一条消息，发送后将替换原有消息</div>
+                <button className="editing-cancel" onClick={cancelEdit}>
+                  取消
+                </button>
               </div>
             )}
             <textarea
@@ -722,6 +812,12 @@ function App() {
           </div>
         </section>
       </main>
+
+    {toast && (
+      <div className={clsx('toast', toast.type === 'success' ? 'ok' : 'err')}>
+        {toast.text}
+      </div>
+    )}
 
       {showLogin && (
         <div className="auth-overlay" onClick={() => setShowLogin(false)}>
