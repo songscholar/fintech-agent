@@ -89,7 +89,11 @@ function App() {
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [toast, setToast] = useState<{
+    id: number;
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const toastTimer = useRef<number | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set());
@@ -138,7 +142,7 @@ function App() {
   useEffect(() => {
     if (toast) {
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
-      toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+      toastTimer.current = window.setTimeout(() => setToast(null), 2200);
     }
     return () => {
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -209,12 +213,26 @@ function App() {
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
-    const next: UploadItem[] = Array.from(files).map((file) => ({
-      id: crypto.randomUUID(),
-      name: file.name,
-      size: file.size,
-      type: file.type
-    }));
+    const allowed =
+      /^(image\/.*|application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/plain|text\/markdown)$/i;
+    const maxSize = 10 * 1024 * 1024;
+    const next: UploadItem[] = [];
+    for (const file of Array.from(files)) {
+      if (file.size > maxSize) {
+        setToast({ id: Date.now(), type: 'error', text: '文件过大，单个文件需小于 10MB' });
+        continue;
+      }
+      if (file.type && !allowed.test(file.type)) {
+        setToast({ id: Date.now(), type: 'error', text: '不支持的文件类型' });
+        continue;
+      }
+      next.push({
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        type: file.type
+      });
+    }
     setUploads((prev) => [...prev, ...next].slice(-5));
   };
 
@@ -331,7 +349,12 @@ function App() {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
+    if (
+      e.key === 'Enter' &&
+      !e.shiftKey &&
+      !isComposing &&
+      (e.metaKey || e.ctrlKey || !e.altKey)
+    ) {
       e.preventDefault();
       handleSend();
     }
@@ -343,6 +366,12 @@ function App() {
 
   const handleCompositionEnd = (_e: CompositionEvent<HTMLTextAreaElement>) => {
     setIsComposing(false);
+  };
+
+  const handleTextareaFocus = () => {
+    if (!user) {
+      setShowLogin(true);
+    }
   };
 
   useEffect(() => {
@@ -358,10 +387,10 @@ function App() {
     navigator.clipboard
       .writeText(text)
       .then(() => {
-        setToast({ type: 'success', text: '已复制到剪贴板' });
+        setToast({ id: Date.now(), type: 'success', text: '已复制到剪贴板' });
       })
       .catch(() => {
-        setToast({ type: 'error', text: '复制失败，请重试' });
+        setToast({ id: Date.now(), type: 'error', text: '复制失败，请重试' });
       });
   };
 
@@ -381,7 +410,7 @@ function App() {
       );
       setIsThinking(false);
     }, 600);
-    setToast({ type: 'success', text: '已重新生成' });
+    setToast({ id: Date.now(), type: 'success', text: '已重新生成' });
   };
 
   const handleLike = (id: string) => {
@@ -394,6 +423,7 @@ function App() {
         next.add(id);
         disliked.delete(id);
         setDislikedIds(disliked);
+        setToast({ id: Date.now(), type: 'success', text: '感谢你的认可，我会继续加油的！' });
       }
       return next;
     });
@@ -409,6 +439,11 @@ function App() {
         next.add(id);
         liked.delete(id);
         setLikedIds(liked);
+        setToast({
+          id: Date.now(),
+          type: 'error',
+          text: '抱歉，我会继续努力生成更好的内容！'
+        });
       }
       return next;
     });
@@ -446,6 +481,14 @@ function App() {
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
     setShowScrollDown(!atBottom);
   };
+
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (!el) return;
+    const threshold = 120;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    setShowScrollDown(!atBottom);
+  }, [messages]);
 
   return (
     <div className="layout">
@@ -754,7 +797,8 @@ function App() {
               onKeyDown={handleKeyDown}
               onCompositionStart={handleCompositionStart}
               onCompositionEnd={handleCompositionEnd}
-              disabled={!user}
+              readOnly={!user}
+              onFocus={handleTextareaFocus}
             />
             {uploads.length > 0 && (
               <div className="uploads-inline">
@@ -814,7 +858,10 @@ function App() {
       </main>
 
     {toast && (
-      <div className={clsx('toast', toast.type === 'success' ? 'ok' : 'err')}>
+      <div
+        key={toast.id}
+        className={clsx('toast', toast.type === 'success' ? 'ok' : 'err')}
+      >
         {toast.text}
       </div>
     )}

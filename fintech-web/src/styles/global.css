@@ -451,6 +451,17 @@ textarea {
   min-height: 0;
 }
 
+.messages::-webkit-scrollbar {
+  width: 8px;
+}
+.messages::-webkit-scrollbar-thumb {
+  background: rgba(86, 120, 255, 0.3);
+  border-radius: 999px;
+}
+.messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .scroll-down {
   position: absolute;
   bottom: 72px;
@@ -662,10 +673,11 @@ textarea {
 }
 
 .action-btn.icon[data-active='true'] {
-  background: linear-gradient(135deg, rgba(86, 120, 255, 0.18), rgba(134, 181, 255, 0.2));
-  border-color: rgba(86, 120, 255, 0.45);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(86, 120, 255, 0.16);
+  background: linear-gradient(135deg, rgba(86, 120, 255, 0.18), rgba(134, 181, 255, 0.22));
+  border-color: rgba(86, 120, 255, 0.48);
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 12px 24px rgba(86, 120, 255, 0.18);
+  animation: icon-pop 260ms ease;
 }
 
 .action-btn.icon[data-active='true']:active {
@@ -795,22 +807,45 @@ textarea {
   max-width: 420px;
   padding: 8px 12px;
   border-radius: 12px;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 14px 36px rgba(86, 120, 255, 0.18);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow: 0 16px 38px rgba(86, 120, 255, 0.2);
   color: #0b1524;
   font-weight: 700;
-  animation: fadeIn 200ms ease;
+  animation: fadeIn 160ms ease, fadeOut 260ms ease 1.8s forwards;
   z-index: 2000;
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
 .toast.ok {
-  background: linear-gradient(135deg, rgba(240, 247, 255, 0.78), rgba(224, 237, 255, 0.72));
+  background: linear-gradient(135deg, rgba(232, 243, 255, 0.76), rgba(210, 230, 255, 0.7));
 }
 
 .toast.err {
-  background: linear-gradient(135deg, rgba(254, 226, 226, 0.8), rgba(254, 202, 202, 0.72));
+  background: linear-gradient(135deg, rgba(255, 236, 232, 0.76), rgba(255, 214, 210, 0.7));
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+}
+
+@keyframes icon-pop {
+  0% {
+    transform: translateY(-1px) scale(0.9);
+  }
+  60% {
+    transform: translateY(-1px) scale(1.08);
+  }
+  100% {
+    transform: translateY(-1px) scale(1.05);
+  }
 }
 
 .uploads,
