@@ -22,3 +22,4 @@ unstructured[all-docs]
 # 依赖brew install tesseract-lang
 pytesseract
 pillow
+fastapi
