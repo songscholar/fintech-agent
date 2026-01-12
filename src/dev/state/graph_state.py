@@ -82,3 +82,28 @@ class DatabaseGraphState:
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
+
+
+class LogGraphState(TypedDict):
+    # --- 基础信息 ---
+    session_id: str
+    user_input: str
+    log_format_config: Optional[str]
+
+    # --- 解析阶段 ---
+    parsed_info: Dict[str, Any]  # 解析出的结构化数据
+    log_type: str  # 日志类型 (CPP_BIZ_LOG, JAVA_ERROR_LOG, UNKNOWN)
+
+    # --- 检索增强 ---
+    search_queries: List[str]  # 扩展后的多路查询词
+    retrieval_context: str  # 检索结果集合
+
+    # --- 生成与评估 ---
+    candidate_answer: str  # 初步生成的回答
+    evaluation_result: Dict[str, Any]  # 评分结果 (passed: bool, reason: str, score: int)
+    final_answer: str  # 最终通过审核的回答
+
+    # --- 流程控制 ---
+    retry_count: int  # 修正循环次数
+    max_retries: int  # 最大重试限制
+    messages: Annotated[List[BaseMessage], add_messages]
