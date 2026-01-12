@@ -1,8 +1,11 @@
-# src/dev/common/db_utils.py
 from sqlalchemy import  engine
 from typing import Optional, Dict
 from dataclasses import dataclass, field
 from src.dev.database.db_connection_manager import DatabaseConnectionManager
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from src.dev.database.models import Base
+import os
 
 # 1. 抽离状态类（如果 sql_agent_node.py 也依赖 DatabaseGraphState）
 @dataclass
@@ -35,6 +38,26 @@ class DBEngineProvider:
     def get_engine(self) -> Optional[engine.Engine]:
         """获取已初始化的 Engine"""
         return self._engine
+
+
+# 建议使用 SQLite (开发) 或 MySQL (生产)
+# SYS_DB_URL = "mysql+pymysql://root:password@localhost:3306/agent_sys_db"
+SYS_DB_URL = os.getenv("SYS_DB_URL", "sqlite:///./system_data.db")
+
+engine = create_engine(SYS_DB_URL, connect_args={"check_same_thread": False} if "sqlite" in SYS_DB_URL else {})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def init_sys_db():
+    """初始化系统表"""
+    Base.metadata.create_all(bind=engine)
+
+def get_sys_db():
+    """FastAPI 依赖：获取 DB 会话"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # 全局单例，供所有模块使用
 engine_provider = DBEngineProvider()

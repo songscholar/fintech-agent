@@ -1,8 +1,16 @@
 import os
-import time
-import uvicorn
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from datetime import datetime
+
+from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+from fastapi import FastAPI, Depends
+from sqlalchemy.orm import Session
+
+from src.dev.api.routers import auth_router, chat_router
+from src.dev.utils.db_utils import init_sys_db, get_sys_db
+from src.dev.utils.auth import get_current_user
+from src.dev.database.models import User, Message, Conversation
 from dotenv import load_dotenv
 
 # 导入 schema
@@ -216,7 +224,115 @@ async def health_check():
             "sql": agents["sql"] is not None
         }
     }
-    return status
+    return status  # 初始化系统表
+
+
+init_sys_db()
+
+app = FastAPI(title="Enterprise AI Agent Platform", version="3.1.0")
+
+# 注册路由
+app.include_router(auth_router.router)
+app.include_router(chat_router.router)
+
+
+# ... (CORS 配置等保持不变)
+
+# ==================== 辅助函数：保存聊天记录 ====================
+def save_chat_history(db: Session, session_id: str, user_input: str, ai_output: str, user_id: int,
+                      msg_type: str = "text"):
+    """将对话持久化到数据库"""
+    # 1. 检查会话是否存在，不存在则自动创建（兼容性逻辑）
+    conv = db.query(Conversation).filter(Conversation.id == session_id).first()
+    if not conv:
+        conv = Conversation(id=session_id, user_id=user_id, title=user_input[:20])
+        db.add(conv)
+        db.commit()
+
+    # 2. 保存用户消息
+    user_msg = Message(conversation_id=session_id, role="user", content=user_input, msg_type="text")
+    db.add(user_msg)
+
+    # 3. 保存 AI 消息
+    ai_msg = Message(conversation_id=session_id, role="assistant", content=ai_output, msg_type=msg_type)
+    db.add(ai_msg)
+
+    # 4. 更新会话时间
+    conv.updated_at = datetime.now()
+    db.commit()
+
+
+# ==================== 修改原有接口：增加鉴权和保存 ====================
+
+@app.post("/api/v1/qa/ask", response_model=StandardResponse)
+async def ask_qa(
+        request: QARequest,
+        current_user: User = Depends(get_current_user),  # 🔒 强制鉴权
+        db: Session = Depends(get_sys_db)
+):
+    # ... (初始化检查逻辑不变)
+
+    # 调用 Agent
+    # 💡 优化：这里可以从 db 查询历史消息，构建 chat_history 传给 Agent，
+    # 但由于我们的 Agent 内部有 MemoryManager，暂时可以依赖 Agent 内部逻辑，
+    # 也可以选择在这里将 SQL 里的历史注入给 Agent。
+    result = agents["qa"].ask(request.question, request.session_id)
+
+    # 💾 持久化保存
+    save_chat_history(
+        db,
+        request.session_id,
+        request.question,
+        result["answer"],
+        current_user.id,
+        "qa"
+    )
+
+    # ... (返回逻辑不变)
+    return StandardResponse(data=QAResult(**result))  # 适配一下字段
+
+
+@app.post("/api/v1/sql/ask", response_model=StandardResponse)
+async def ask_sql(
+        request: SQLRequest,
+        current_user: User = Depends(get_current_user),  # 🔒 强制鉴权
+        db: Session = Depends(get_sys_db)
+):
+    # ... (Agent 调用逻辑)
+    result = agents["sql"].ask(request.question, request.session_id)
+
+    # 💾 持久化保存
+    # 注意：如果需要审核，answer 可能是 "等待审核中..."
+    save_chat_history(
+        db,
+        request.session_id,
+        request.question,
+        result["answer"],
+        current_user.id,
+        "sql"
+    )
+
+    # ... (返回逻辑)
+
+
+@app.post("/api/v1/log/analyze", response_model=StandardResponse)
+async def analyze_log(
+        request: LogAnalysisRequest,
+        current_user: User = Depends(get_current_user),  # 🔒 强制鉴权
+        db: Session = Depends(get_sys_db)
+):
+    # ... (Agent 调用逻辑)
+    result = agents["log"].analyze(request.log_content, request.session_id)
+
+    # 💾 持久化保存
+    save_chat_history(
+        db,
+        request.session_id,
+        f"[日志分析] {request.log_content[:50]}...",  # 仅存摘要或完整存
+        result["report"],
+        current_user.id,
+        "log"
+    )
 
 
 if __name__ == "__main__":
